@@ -1,4 +1,4 @@
-import { CHEGOU_POR_LINK, supabase } from "@/_core/supabase/cliente";
+import { CHEGOU_POR_LINK, ERRO_DO_LINK, supabase } from "@/_core/supabase/cliente";
 import { MODO_DEMO, MODO_REAL } from "@/_core/supabase/modo";
 import { dispensarErro, useErroSincronizacao } from "@/_core/supabase/sincronizar";
 import logoPnst from "@/assets/pnst-logo.webp";
@@ -39,13 +39,25 @@ function NaoConfigurado() {
 
 function Portao({ children }: { children: ReactNode }) {
   const [estado, setEstado] = useState<"carregando" | "pronto" | "definir-senha">(CHEGOU_POR_LINK ? "definir-senha" : "carregando");
-  const [aviso, setAviso] = useState<string | null>(null);
+  // Link de convite ou de nova senha vencido ou já usado (o Outlook às vezes
+  // "abre" o link sozinho ao verificar o e-mail): avisa na tela de login.
+  const [aviso, setAviso] = useState<string | null>(
+    ERRO_DO_LINK ? "Este link de acesso expirou ou já foi usado. Na tela de login, use \"Esqueci minha senha\" para receber um novo." : null,
+  );
 
   useEffect(() => {
     const { data } = supabase().auth.onAuthStateChange((evento, sessao) => {
       // Nada de await aqui dentro: o supabase-js trava se o callback esperar outra chamada dele.
       setTimeout(async () => {
         if (evento === "PASSWORD_RECOVERY") return setEstado("definir-senha");
+        // As abas dividem a sessão: se outra aba entrou com outra pessoa, esta
+        // recarrega para não seguir mostrando um usuário e gravando como outro.
+        if (evento === "SIGNED_IN" && sessao?.user && !CHEGOU_POR_LINK) {
+          const { usuarioDaAba } = await import("@/_core/supabase/autenticacao");
+          const daAba = usuarioDaAba();
+          if (daAba && daAba !== sessao.user.id) window.location.reload();
+          return;
+        }
         if (evento === "SIGNED_OUT") {
           const { limparSessaoLocal } = await import("@/_core/supabase/autenticacao");
           return limparSessaoLocal();

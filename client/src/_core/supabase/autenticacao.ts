@@ -1,6 +1,6 @@
 import { sessaoAdmin } from "@/_core/identidade/sessao";
 import { sessaoPortal } from "@/contexts/PortalContext";
-import { supabase } from "./cliente";
+import { encerrarAbaIsolada, supabase } from "./cliente";
 import { iniciarSincronizacao, pararSincronizacao } from "./sincronizar";
 
 /**
@@ -12,6 +12,9 @@ import { iniciarSincronizacao, pararSincronizacao } from "./sincronizar";
 export type Resultado = { ok: true; tipo: "equipe" | "prestador" } | { ok: false; mensagem: string };
 
 let sessaoAtual: { usuarioId: string; pronta: Promise<Resultado> } | null = null;
+
+/** Quem esta aba carregou (para notar quando outra aba troca de usuário). */
+export const usuarioDaAba = () => sessaoAtual?.usuarioId ?? null;
 
 /** Carrega perfil e dados do usuário logado. Idempotente por usuário. */
 export function prepararSessao(usuarioId: string): Promise<Resultado> {
@@ -36,7 +39,7 @@ export function prepararSessao(usuarioId: string): Promise<Resultado> {
 
 async function recusar(mensagem: string): Promise<Resultado> {
   sessaoAtual = null;
-  await supabase().auth.signOut();
+  await supabase().auth.signOut({ scope: "local" });
   return { ok: false, mensagem };
 }
 
@@ -44,6 +47,10 @@ function mensagemDeLogin(mensagem: string) {
   if (/invalid login credentials/i.test(mensagem)) return "E-mail ou senha incorretos.";
   if (/email not confirmed/i.test(mensagem)) return "Confirme o e-mail pelo link do convite antes de entrar.";
   if (/rate limit|too many/i.test(mensagem)) return "Muitas tentativas. Espere alguns minutos e tente de novo.";
+  if (/session missing|session_not_found|session from session_id/i.test(mensagem))
+    return "O acesso deste link foi encerrado. Na tela de login, use \"Esqueci minha senha\" para receber um link novo.";
+  if (/same.*password|different from the old/i.test(mensagem)) return "A senha nova precisa ser diferente da anterior.";
+  if (/password should be|weak password/i.test(mensagem)) return "Senha fraca: use ao menos 10 caracteres, misturando letras e números.";
   return mensagem;
 }
 
@@ -70,9 +77,11 @@ export async function limparSessaoLocal() {
   sessaoPortal.atualizar(() => ({ prestadorId: null }));
 }
 
+/** Sai só deste navegador: os outros aparelhos da pessoa continuam logados. */
 export async function sair() {
   await limparSessaoLocal();
-  await supabase().auth.signOut();
+  await supabase().auth.signOut({ scope: "local" });
+  encerrarAbaIsolada();
 }
 
 /** "Esqueci minha senha": o Supabase manda o link; ele volta para o app. */
@@ -81,9 +90,9 @@ export async function pedirNovaSenha(email: string) {
   return error ? mensagemDeLogin(error.message) : null;
 }
 
-export async function definirSenha(senha: string) {
+export async function definirSenha(senha: string): Promise<Resultado> {
   const { data, error } = await supabase().auth.updateUser({ password: senha });
-  if (error || !data.user) return { ok: false as const, mensagem: error?.message ?? "Não foi possível definir a senha." };
+  if (error || !data.user) return { ok: false, mensagem: mensagemDeLogin(error?.message ?? "Não foi possível definir a senha.") };
   return prepararSessao(data.user.id);
 }
 
