@@ -14,7 +14,7 @@ import { registrarConvitePortal, salvarPrestador } from "@/modulos/prestadores/a
 import { codigoDisponivel, montarLotes } from "@/modulos/prestadores/regras";
 import { CATEGORIAS_PRESTADOR, type CategoriaPrestador, type Prestador } from "@/modulos/prestadores/tipos";
 import { useDadosPrestadores } from "@/modulos/prestadores/usarDados";
-import { AlertTriangle, ClipboardCheck, Mail, Pencil, Plus, Search, SearchX, Send, UserCheck, Users, X } from "lucide-react";
+import { AlertTriangle, Check, ClipboardCheck, FileText, IdCard, Mail, MessageCircle, Pencil, Phone, Plus, Search, SearchX, Send, UserCheck, Users, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 
@@ -325,6 +325,37 @@ export default function Cadastro() {
   );
 }
 
+/** Telefone brasileiro para o link do WhatsApp (55 + DDD + número). */
+function linkWhatsApp(telefone: string) {
+  const digitos = telefone.replace(/\D/g, "");
+  if (digitos.length < 10) return null;
+  return `https://wa.me/${digitos.length <= 11 ? `55${digitos}` : digitos}`;
+}
+
+/** As etapas do acesso ao portal no modo real, na ordem em que acontecem. */
+function passosDoAcesso(prestador: Prestador, situacao: SituacaoAcesso, conta: ContaPortal | undefined) {
+  const comAcesso = situacao === "Com acesso";
+  const convidado = comAcesso || situacao === "Convite enviado";
+  return [
+    { rotulo: "Cadastro", detalhe: prestador.email ? "E-mail informado" : "Falta o e-mail", feito: Boolean(prestador.email) },
+    { rotulo: "Convite", detalhe: prestador.convidadoEm ? `Enviado em ${formatarData(prestador.convidadoEm)}` : convidado ? "Enviado" : "Não enviado", feito: convidado },
+    {
+      rotulo: "Senha criada",
+      detalhe: comAcesso ? (conta?.ultimoAcesso ? `Último acesso ${formatarData(conta.ultimoAcesso.slice(0, 10))}` : "Já pode entrar") : "Aguardando",
+      feito: comAcesso,
+    },
+  ];
+}
+
+/** O que falta para o prestador entrar — o texto do próximo passo. */
+function proximoPasso(situacao: SituacaoAcesso) {
+  if (situacao === "Desativado") return "O acesso está desligado. Para liberar, edite o cadastro e ative o portal.";
+  if (situacao === "Sem e-mail") return "Cadastre o e-mail do prestador: ele é o login do portal.";
+  if (situacao === "Sem convite") return "Envie o convite: o prestador recebe um e-mail para criar a própria senha.";
+  if (situacao === "Convite enviado") return "O prestador ainda não criou a senha. Se o e-mail não chegou ou o link expirou, reenvie.";
+  return null;
+}
+
 function FichaPrestador({
   prestador,
   conta,
@@ -350,120 +381,158 @@ function FichaPrestador({
   aoFechar: () => void;
   aoAbrirConferencia: () => void;
 }) {
+  const whatsapp = prestador.telefone ? linkWhatsApp(prestador.telefone) : null;
+  const passo = MODO_REAL ? proximoPasso(situacao) : prestador.portalAtivo ? null : proximoPasso("Desativado");
+  const faltando = [!prestador.email && "e-mail", !prestador.documento && "CPF/CNPJ", !prestador.telefone && "telefone"].filter(Boolean) as string[];
+  const ano = HOJE.slice(0, 4);
+
   return (
     <Gaveta
-      rotulo={prestador.categoria}
+      rotulo="Prestador"
       titulo={prestador.nome}
-      subtitulo={
-        <>
-          Prestador desde {formatarData(prestador.desde)} · <Selo tom={TOM_ACESSO[situacao]}>{situacao}</Selo>
-        </>
-      }
+      subtitulo={`${prestador.categoria} · prestador desde ${formatarData(prestador.desde)}`}
       aoFechar={aoFechar}
       rodape={
         podeEditar ? (
-          <div className="inline-row inline-row-justo">
-            <button type="button" className="text-button text-button-neutro" onClick={aoEditar}>
+          <>
+            <span />
+            <button type="button" className="button-secondary" onClick={aoEditar}>
               <Pencil size={14} strokeWidth={2} /> Editar cadastro
             </button>
-            {podeConvidar ? (
-              <button type="button" className="button-primary" onClick={aoConvidar} disabled={convidando}>
-                <Send size={14} strokeWidth={2} /> {convidando ? "Enviando…" : situacao === "Convite enviado" ? "Reenviar convite" : "Convidar para o portal"}
-              </button>
-            ) : null}
-          </div>
+          </>
         ) : null
       }
     >
-      <section>
-        <span className="eyebrow">Acesso ao portal</span>
-        <dl className="data-list espaco-acima-curto">
-          <div>
-            <dt>Situação</dt>
-            <dd>{MODO_REAL ? detalheDoAcesso(prestador, situacao, conta) : prestador.portalAtivo ? "Entra com código e senha" : "Não entra no portal"}</dd>
-          </div>
-          <div>
-            <dt>Login</dt>
-            <dd>{MODO_REAL ? prestador.email || "— (cadastre o e-mail)" : `Código ${prestador.codigoAcesso}`}</dd>
-          </div>
-          {MODO_REAL && prestador.convidadoEm ? (
-            <div>
-              <dt>Último convite</dt>
-              <dd>{formatarData(prestador.convidadoEm)}</dd>
-            </div>
-          ) : null}
-          {MODO_REAL ? (
-            <div>
-              <dt>Código do prestador</dt>
-              <dd className="texto-mono">{prestador.codigoAcesso}</dd>
-            </div>
-          ) : null}
-        </dl>
-        {situacao === "Convite enviado" ? (
-          <p className="field-hint espaco-acima-curto">
-            O prestador ainda não criou a senha. Se o e-mail não chegou ou o link expirou, reenvie o convite.
-          </p>
-        ) : null}
-      </section>
-
-      <section className="espaco-acima">
-        <span className="eyebrow">Atividade em {HOJE.slice(0, 4)}</span>
-        <div className="mini-kpis espaco-acima-curto">
-          <div>
-            <span>Recibos</span>
-            <strong>{atividade.recibosNoAno}</strong>
-          </div>
-          <div>
-            <span>Total</span>
-            <strong>{formatBRL(atividade.totalNoAno)}</strong>
-          </div>
-          <div>
-            <span>A conferir</span>
-            <strong className={atividade.aguardando ? "texto-perigo" : undefined}>{atividade.aguardando}</strong>
-          </div>
+      {/* Acesso ao portal: situação, etapas e o próximo passo com a ação ao lado */}
+      <section className="ficha-cartao">
+        <div className="ficha-cartao-cabeca">
+          <h3>Acesso ao portal</h3>
+          <Selo tom={TOM_ACESSO[situacao]}>{situacao}</Selo>
         </div>
-        <dl className="data-list espaco-acima-curto">
-          <div>
-            <dt>Último recibo</dt>
-            <dd>{atividade.ultimoRecibo ? `${formatarData(atividade.ultimoRecibo.serviceDate)} · ${formatBRL(atividade.ultimoRecibo.amount)}` : "—"}</dd>
+        {MODO_REAL ? (
+          <ol className="passos-acesso">
+            {passosDoAcesso(prestador, situacao, conta).map((etapa) => (
+              <li key={etapa.rotulo} className={etapa.feito ? "passo-feito" : undefined}>
+                <span className="passo-marca" aria-hidden="true">
+                  {etapa.feito ? <Check size={12} strokeWidth={3} /> : null}
+                </span>
+                <strong>{etapa.rotulo}</strong>
+                <span>{etapa.detalhe}</span>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="ficha-texto">{prestador.portalAtivo ? `Entra no portal com o código ${prestador.codigoAcesso} e a senha cadastrada.` : "Não entra no portal."}</p>
+        )}
+        {passo ? (
+          <div className="ficha-proximo">
+            <p>{passo}</p>
+            {podeConvidar ? (
+              <button type="button" className="button-primary" onClick={aoConvidar} disabled={convidando}>
+                <Send size={14} strokeWidth={2} /> {convidando ? "Enviando…" : situacao === "Convite enviado" ? "Reenviar convite" : "Enviar convite"}
+              </button>
+            ) : null}
           </div>
-          <div>
-            <dt>Último pagamento</dt>
-            <dd>{atividade.ultimoPago ? `${formatMonth(atividade.ultimoPago.competencia)}${atividade.ultimoPago.paidAt ? ` · pago em ${formatarData(atividade.ultimoPago.paidAt)}` : ""}` : "—"}</dd>
-          </div>
-        </dl>
-        {atividade.aguardando ? (
-          <button type="button" className="text-button espaco-acima-curto" onClick={aoAbrirConferencia}>
-            <ClipboardCheck size={14} strokeWidth={2} /> Abrir a conferência
-          </button>
         ) : null}
       </section>
 
-      <section className="espaco-acima">
-        <span className="eyebrow">Cadastro</span>
-        <dl className="data-list espaco-acima-curto">
-          <div>
-            <dt>CPF ou CNPJ</dt>
-            <dd>{prestador.documento || "—"}</dd>
-          </div>
-          <div>
-            <dt>E-mail</dt>
-            <dd>{prestador.email ? <a href={`mailto:${prestador.email}`}>{prestador.email}</a> : "—"}</dd>
-          </div>
-          <div>
-            <dt>Telefone</dt>
-            <dd>{prestador.telefone ? <a href={`tel:${prestador.telefone.replace(/[^\d+]/g, "")}`}>{prestador.telefone}</a> : "—"}</dd>
-          </div>
-          <div>
-            <dt>Contrato</dt>
-            <dd>{prestador.contrato || "—"}</dd>
-          </div>
-        </dl>
-        {incompleto(prestador) ? (
-          <p className="field-hint espaco-acima-curto">
-            <AlertTriangle size={13} strokeWidth={2} /> Cadastro incompleto: {[!prestador.email && "e-mail", !prestador.documento && "CPF/CNPJ", !prestador.telefone && "telefone"].filter(Boolean).join(", ")}.
+      {/* Contato e cadastro: com atalhos para falar com o prestador */}
+      <section className="ficha-cartao">
+        <div className="ficha-cartao-cabeca">
+          <h3>Contato e cadastro</h3>
+          {faltando.length ? <Selo tom="amber">Incompleto</Selo> : null}
+        </div>
+        <ul className="contato-lista">
+          <li>
+            <span className="contato-icone" aria-hidden="true">
+              <Mail size={15} strokeWidth={1.9} />
+            </span>
+            <div>
+              <span>E-mail{MODO_REAL && prestador.email ? " · login do portal" : ""}</span>
+              {prestador.email ? <a href={`mailto:${prestador.email}`}>{prestador.email}</a> : <em>Não informado</em>}
+            </div>
+          </li>
+          <li>
+            <span className="contato-icone" aria-hidden="true">
+              <Phone size={15} strokeWidth={1.9} />
+            </span>
+            <div>
+              <span>Telefone</span>
+              {prestador.telefone ? <a href={`tel:${prestador.telefone.replace(/[^\d+]/g, "")}`}>{prestador.telefone}</a> : <em>Não informado</em>}
+            </div>
+            {whatsapp ? (
+              <a className="button-secondary button-compacto" href={whatsapp} target="_blank" rel="noreferrer">
+                <MessageCircle size={13} strokeWidth={2} /> WhatsApp
+              </a>
+            ) : null}
+          </li>
+          <li>
+            <span className="contato-icone" aria-hidden="true">
+              <IdCard size={15} strokeWidth={1.9} />
+            </span>
+            <div>
+              <span>CPF ou CNPJ</span>
+              {prestador.documento ? <strong>{prestador.documento}</strong> : <em>Não informado</em>}
+            </div>
+          </li>
+          <li>
+            <span className="contato-icone" aria-hidden="true">
+              <FileText size={15} strokeWidth={1.9} />
+            </span>
+            <div>
+              <span>Contrato · código do prestador</span>
+              <strong>
+                {prestador.contrato || "—"} · <span className="texto-mono">{prestador.codigoAcesso}</span>
+              </strong>
+            </div>
+          </li>
+        </ul>
+        {faltando.length ? <p className="ficha-aviso">Falta: {faltando.join(", ")}.</p> : null}
+      </section>
+
+      {/* Atividade do ano: números quando há recibos; um aviso quando não há */}
+      <section className="ficha-cartao">
+        <div className="ficha-cartao-cabeca">
+          <h3>Atividade em {ano}</h3>
+          {atividade.aguardando ? <Selo tom="red">{atividade.aguardando} a conferir</Selo> : null}
+        </div>
+        {atividade.recibosNoAno || atividade.ultimoPago ? (
+          <>
+            <div className="mini-kpis">
+              <div>
+                <span>Recibos</span>
+                <strong>{atividade.recibosNoAno}</strong>
+              </div>
+              <div>
+                <span>Total</span>
+                <strong>{formatBRL(atividade.totalNoAno)}</strong>
+              </div>
+              <div>
+                <span>A conferir</span>
+                <strong className={atividade.aguardando ? "texto-perigo" : undefined}>{atividade.aguardando}</strong>
+              </div>
+            </div>
+            <dl className="data-list espaco-acima-curto">
+              <div>
+                <dt>Último recibo</dt>
+                <dd>{atividade.ultimoRecibo ? `${formatarData(atividade.ultimoRecibo.serviceDate)} · ${formatBRL(atividade.ultimoRecibo.amount)}` : "—"}</dd>
+              </div>
+              <div>
+                <dt>Último pagamento</dt>
+                <dd>{atividade.ultimoPago ? `${formatMonth(atividade.ultimoPago.competencia)}${atividade.ultimoPago.paidAt ? ` · pago em ${formatarData(atividade.ultimoPago.paidAt)}` : ""}` : "—"}</dd>
+              </div>
+            </dl>
+            {atividade.aguardando ? (
+              <button type="button" className="text-button espaco-acima-curto" onClick={aoAbrirConferencia}>
+                <ClipboardCheck size={14} strokeWidth={2} /> Abrir a conferência
+              </button>
+            ) : null}
+          </>
+        ) : (
+          <p className="ficha-texto">
+            Nenhum recibo em {ano}. {situacao === "Com acesso" || (!MODO_REAL && prestador.portalAtivo) ? "Os recibos que o prestador lançar no portal aparecem aqui." : "Depois que o prestador entrar no portal, os recibos que ele lançar aparecem aqui."}
           </p>
-        ) : null}
+        )}
       </section>
     </Gaveta>
   );
