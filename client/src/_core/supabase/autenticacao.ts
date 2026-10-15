@@ -31,6 +31,7 @@ export function prepararSessao(usuarioId: string): Promise<Resultado> {
       return { ok: true, tipo: "equipe" };
     }
     sessaoPortal.atualizar(() => ({ prestadorId: perfil.prestador_id }));
+    void supabase().rpc("registrar_acesso");
     return { ok: true, tipo: "prestador" };
   })();
   sessaoAtual = { usuarioId, pronta };

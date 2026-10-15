@@ -55,6 +55,11 @@ export function salvarPrestador(dados: Prestador) {
   );
 }
 
+/** Guarda o dia do convite do portal (o e-mail saiu pela função `convidar`). */
+export function registrarConvitePortal(id: string) {
+  prestadores.atualizar((lista) => lista.map((prestador) => (prestador.id === id ? { ...prestador, convidadoEm: HOJE } : prestador)));
+}
+
 /** O portal autentica contra o cadastro feito no admin. */
 export function autenticarPrestador(codigo: string, senha: string): Prestador | null {
   const alvo = codigo.trim().toUpperCase();

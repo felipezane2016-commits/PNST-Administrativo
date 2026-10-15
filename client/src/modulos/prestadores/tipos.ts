@@ -18,6 +18,8 @@ export type Prestador = {
   portalAtivo: boolean;
   contrato: string;
   desde: string;
+  /** Modo real: dia em que o último convite do portal foi enviado. */
+  convidadoEm?: string | null;
 };
 
 /** Situação de um grupo de recibos (prestador + competência) na conferência. */
