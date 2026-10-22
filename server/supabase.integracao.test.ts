@@ -46,7 +46,7 @@ describe.skipIf(!URL)("Supabase: RLS e regras no banco", () => {
     await criar("admin");
     await criar("financeiro", { papel: "gestor", modulos: ["contas", "prestadores"] });
     await criar("aprovador", { papel: "gestor", modulos: ["contas"] });
-    await criar("advogada", { papel: "operador", modulos: ["tarefas"] });
+    await criar("advogada", { papel: "operador", modulos: ["documentos"] });
     await criar("leitor", { papel: "viewer", modulos: ["contas"] });
     await servico.from("configuracoes").insert({ id: "pagamentos-config", dados: { aprovadorId: pessoas.aprovador.id, substitutoId: null, substitutoDe: null, substitutoAte: null } });
   }, 60_000);

@@ -21,7 +21,6 @@ const PAGINAS: Pagina[] = [
   { padrao: "/", titulo: "Visão geral", Componente: VisaoGeral },
   { padrao: "/notificacoes", titulo: "Notificações", Componente: lazy(() => import("./paginas/Notificacoes")) },
   { padrao: "/calendario", titulo: "Calendário", Componente: lazy(() => import("./paginas/Calendario")) },
-  { padrao: "/tarefas", titulo: "Tarefas", Componente: lazy(() => import("./paginas/Tarefas")) },
   { padrao: "/documentos", titulo: "Documentos", Componente: lazy(() => import("./paginas/Documentos")) },
   { padrao: "/usuarios", titulo: "Usuários e acessos", Componente: lazy(() => import("./paginas/Usuarios")) },
 

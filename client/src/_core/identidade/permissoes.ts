@@ -17,7 +17,6 @@ export const PAPEIS: Record<Papel, { nome: string; descricao: string }> = {
 export type Modulo =
   | "visao"
   | "calendario"
-  | "tarefas"
   | "documentos"
   | "prestadores"
   | "contas";
@@ -25,7 +24,6 @@ export type Modulo =
 export const MODULOS: Record<Modulo, string> = {
   visao: "Visão geral",
   calendario: "Calendário",
-  tarefas: "Tarefas",
   documentos: "Documentos",
   prestadores: "Prestadores",
   contas: "Account Management",

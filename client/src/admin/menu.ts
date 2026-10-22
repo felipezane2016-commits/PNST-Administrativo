@@ -12,7 +12,6 @@ import {
   FolderOpen,
   Gauge,
   History,
-  KanbanSquare,
   Landmark,
   LayoutDashboard,
   LineChart,
@@ -49,7 +48,6 @@ export const MENU_ESCRITORIO: Grupo[] = [
       { rota: "/", rotulo: "Visão geral", icone: LayoutDashboard, modulo: "visao" },
       { rota: "/notificacoes", rotulo: "Notificações", icone: Bell, contador: "notificacoes" },
       { rota: "/calendario", rotulo: "Calendário", icone: CalendarDays, modulo: "calendario" },
-      { rota: "/tarefas", rotulo: "Tarefas", icone: KanbanSquare, modulo: "tarefas" },
       { rota: "/documentos", rotulo: "Documentos", icone: FileText, modulo: "documentos" },
     ],
   },
@@ -156,7 +154,6 @@ export function menuDaRota(caminho: string): MenuModulo | null {
 export function moduloDaRota(caminho: string): Modulo | null {
   const mapa: [string, Modulo][] = [
     ["/calendario", "calendario"],
-    ["/tarefas", "tarefas"],
     ["/documentos", "documentos"],
     ["/prestadores", "prestadores"],
     ["/contas", "contas"],

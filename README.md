@@ -95,7 +95,6 @@ Rotas do admin:
   - `/` visão geral
   - `/notificacoes`
   - `/calendario`
-  - `/tarefas`
   - `/documentos`
   - `/usuarios` (só com permissão `usuarios.gerenciar`)
 - **Pagamentos** (qualquer pessoa logada pede; cada um vê o que lhe cabe):

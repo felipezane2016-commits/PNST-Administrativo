@@ -9,7 +9,7 @@ import { colecoesRegistradas } from "./colecao";
  * tela em silêncio. Quando isso acontece, a pessoa é avisada uma vez, para não
  * achar que perdeu o que fez.
  */
-export const VERSAO_DA_SEMENTE = 5;
+export const VERSAO_DA_SEMENTE = 6;
 
 /** Volta todas as coleções aos dados de demonstração. */
 export function restaurarDemonstracao() {

@@ -5,7 +5,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { notificacoes } from "@/modulos/notificacoes/colecao";
 import { fechamentos, prestadores, recibos } from "@/modulos/prestadores/colecoes";
 import { montarLotes } from "@/modulos/prestadores/regras";
-import { ArrowLeft, Building2, FileText, KanbanSquare, Landmark, LayoutGrid, LogOut, Menu, Moon, Receipt, Sun, UserCog, X } from "lucide-react";
+import { ArrowLeft, Building2, FileText, Landmark, LayoutGrid, LogOut, Menu, Moon, Receipt, Sun, UserCog, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { itemAtivo, MENU_ESCRITORIO, menuDaRota, type Contador, type Grupo, type ItemMenu } from "./menu";
@@ -14,7 +14,7 @@ import AvisoRenovacao from "@/components/AvisoRenovacao";
 import BuscaGlobal, { type ItemBusca } from "@/components/BuscaGlobal";
 import MenuConta from "@/components/MenuConta";
 import MenuSino from "@/components/MenuSino";
-import { documentos, tarefas } from "@/modulos/escritorio/colecoes";
+import { documentos } from "@/modulos/escritorio/colecoes";
 import { ordens, taxas, tarefasContas } from "@/modulos/contas/colecoes";
 import { alertasDasOrdens } from "@/modulos/contas/regras";
 import { configAprovacao, pagamentos } from "@/modulos/pagamentos/colecoes";
@@ -87,11 +87,6 @@ function itensDeBusca(usuario: Usuario, navegar: (rota: string) => void): ItemBu
     }
     for (const recibo of recibos.ler()) {
       itens.push({ id: `re-${recibo.id}`, grupo: "Recibos", titulo: `${recibo.id} · ${recibo.client}`, detalhe: `${recibo.category} · ${formatarData(recibo.serviceDate)} · ${recibo.status}`, icone: <Receipt size={14} />, abrir: () => navegar("/prestadores/historico") });
-    }
-  }
-  if (veModulo(usuario, "tarefas")) {
-    for (const tarefa of tarefas.ler()) {
-      itens.push({ id: `tf-${tarefa.id}`, grupo: "Tarefas", titulo: tarefa.titulo, detalhe: tarefa.area, icone: <KanbanSquare size={14} />, abrir: () => navegar("/tarefas") });
     }
   }
   if (veModulo(usuario, "documentos")) {

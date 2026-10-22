@@ -1,15 +1,5 @@
 import { criarColecao, useColecao } from "@/_core/armazenamento/colecao";
-import type { Documento, Reuniao, Tarefa } from "./tipos";
-
-const TAREFAS_DEMO: Tarefa[] = [
-  { id: "tf-1", titulo: "Revisar contrato de prestação com nova agência postal", descricao: "Cláusula de reajuste anual.", prioridade: "Alta", area: "Prestadores", responsavelId: "usr-ricardo", prazo: "2026-07-03", coluna: "andamento" },
-  { id: "tf-2", titulo: "Revisar categorias de serviço dos prestadores", descricao: "Separar diligência de cartório.", prioridade: "Média", area: "Prestadores", responsavelId: "usr-helena", prazo: "2026-07-10", coluna: "backlog" },
-  { id: "tf-3", titulo: "Fechar relatório de despesas reembolsáveis de junho", descricao: "", prioridade: "Alta", area: "Financeiro", responsavelId: "usr-caio", prazo: "2026-07-02", coluna: "revisao" },
-  { id: "tf-4", titulo: "Treinar equipe no novo fluxo de conferência", descricao: "Mostrar a gaveta de lote e a devolução com nota.", prioridade: "Média", area: "Prestadores", responsavelId: "usr-fernanda", prazo: "2026-07-08", coluna: "backlog" },
-  { id: "tf-5", titulo: "Organizar pasta de contratos 2025 no GED", descricao: "", prioridade: "Baixa", area: "Geral", responsavelId: "usr-bianca", prazo: null, coluna: "backlog" },
-  { id: "tf-6", titulo: "Cobrar documento de faturamento — Ofício Central", descricao: "", prioridade: "Alta", area: "Prestadores", responsavelId: "usr-helena", prazo: "2026-06-29", coluna: "andamento" },
-  { id: "tf-7", titulo: "Renovar certificado digital do escritório", descricao: "", prioridade: "Média", area: "Geral", responsavelId: "usr-fernanda", prazo: "2026-06-20", coluna: "concluido" },
-];
+import type { Documento, Reuniao } from "./tipos";
 
 const DOCUMENTOS_DEMO: Documento[] = [
   { id: "doc-1", nome: "Contrato de prestação — Rota Leve.pdf", categoria: "Contratos", tamanho: 284_000, data: "2026-06-21", enviadoPor: "Ricardo Alves" },
@@ -28,12 +18,11 @@ const REUNIOES_DEMO: Reuniao[] = [
   { id: "re-5", titulo: "Comitê mensal", data: "2026-07-14", hora: "10:00", local: "Sala 1", participantes: "Sócios", pauta: "Resultados do semestre." },
 ];
 
-export const tarefas = criarColecao<Tarefa[]>("escritorio-tarefas", () => TAREFAS_DEMO, { remota: { tipo: "lista", tabela: "escritorio_tarefas" }, vazio: () => [] });
 export const documentos = criarColecao<Documento[]>("escritorio-documentos", () => DOCUMENTOS_DEMO, { remota: { tipo: "lista", tabela: "escritorio_documentos" }, vazio: () => [] });
 export const reunioes = criarColecao<Reuniao[]>("escritorio-reunioes", () => REUNIOES_DEMO, { remota: { tipo: "lista", tabela: "escritorio_reunioes" }, vazio: () => [] });
 
 export function useDadosEscritorio() {
-  return { tarefas: useColecao(tarefas), documentos: useColecao(documentos), reunioes: useColecao(reunioes) };
+  return { documentos: useColecao(documentos), reunioes: useColecao(reunioes) };
 }
 
 export function formatarTamanho(bytes: number) {

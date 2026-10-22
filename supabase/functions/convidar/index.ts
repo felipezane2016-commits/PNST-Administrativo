@@ -10,7 +10,7 @@
 // (nada a baixar na hora de publicar ou de subir a função).
 
 const PAPEIS = ["admin", "gestor", "operador", "viewer"];
-const MODULOS = ["visao", "calendario", "tarefas", "documentos", "prestadores", "contas"];
+const MODULOS = ["visao", "calendario", "documentos", "prestadores", "contas"];
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",

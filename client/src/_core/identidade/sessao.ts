@@ -1,11 +1,10 @@
 import { criarColecao, useColecao } from "@/_core/armazenamento/colecao";
 import { MODO_REAL } from "@/_core/supabase/modo";
-import type { Modulo, Usuario } from "./permissoes";
+import { MODULOS, type Modulo, type Usuario } from "./permissoes";
 
 const MODULOS_TODOS: Modulo[] = [
   "visao",
   "calendario",
-  "tarefas",
   "documentos",
   "prestadores",
   "contas",
@@ -42,7 +41,7 @@ export const USUARIOS_DEMO: Usuario[] = [
     senha: "nexus2026",
     departamento: "Operações",
     papel: "gestor",
-    modulos: ["visao", "calendario", "tarefas", "documentos", "prestadores", "contas"],
+    modulos: ["visao", "calendario", "documentos", "prestadores", "contas"],
     ativo: true,
     ultimoAcesso: "2026-06-29T17:40:00.000Z",
   },
@@ -53,7 +52,7 @@ export const USUARIOS_DEMO: Usuario[] = [
     senha: "nexus2026",
     departamento: "Chefe da Administração",
     papel: "gestor",
-    modulos: ["visao", "calendario", "tarefas", "documentos", "contas"],
+    modulos: ["visao", "calendario", "documentos", "contas"],
     ativo: true,
     ultimoAcesso: "2026-06-30T08:40:00.000Z",
   },
@@ -64,7 +63,7 @@ export const USUARIOS_DEMO: Usuario[] = [
     senha: "nexus2026",
     departamento: "Operações",
     papel: "operador",
-    modulos: ["calendario", "tarefas", "prestadores"],
+    modulos: ["calendario", "prestadores"],
     ativo: true,
     ultimoAcesso: "2026-06-30T09:05:00.000Z",
   },
@@ -86,7 +85,7 @@ export const USUARIOS_DEMO: Usuario[] = [
     senha: "nexus2026",
     departamento: "RH",
     papel: "operador",
-    modulos: ["visao", "calendario", "tarefas"],
+    modulos: ["visao", "calendario", "documentos"],
     ativo: false,
     ultimoAcesso: "2026-03-14T10:00:00.000Z",
   },
@@ -111,7 +110,8 @@ export const usuarios = criarColecao<Usuario[]>("usuarios", () => USUARIOS_DEMO,
             senha: "",
             departamento: linha.departamento,
             papel: linha.papel,
-            modulos: linha.modulos,
+            // Só módulos que existem hoje (um módulo retirado some do perfil).
+            modulos: (linha.modulos as string[]).filter((modulo): modulo is Modulo => modulo in MODULOS),
             ativo: linha.ativo,
             ultimoAcesso: linha.ultimo_acesso,
           }
