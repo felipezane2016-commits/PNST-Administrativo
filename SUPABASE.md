@@ -110,10 +110,10 @@ O sistema é um site estático: qualquer hospedagem de sites serve. Com a Vercel
 
 1. **Usuários e acessos → Convidar usuário:** cada pessoa recebe o e-mail,
    cria a própria senha e entra com o papel e os módulos que você definiu.
-2. **Pagamentos → Regras de aprovação:** escolha o chefe da administração e o substituto.
+2. **Account Management → Pagamentos → Regras de aprovação:** escolha o chefe da administração e o substituto.
 3. **Conciliação → Contas bancárias:** cadastre as contas com o saldo de abertura.
 4. **Ordens de pagamento → ⚙:** e-mails do Banco Industrial, dos superiores e a assinatura.
-5. **Pagamentos → Fornecedores** e **Prestadores → Cadastro e acesso**: para dar
+5. **Account Management → Pagamentos → Fornecedores** e **Prestadores → Cadastro e acesso**: para dar
    acesso ao portal, salve o prestador com o e-mail e use **Convidar para o portal**.
 
 ---

@@ -161,7 +161,7 @@ function GavetaLote({ lote, podeAgir, aoFechar }: { lote: Lote; podeAgir: boolea
             </button>
           ) : null}
           {pedido && lote.situacao !== "Pago" ? (
-            <button type="button" className="button-secondary" onClick={() => navegar("/pagamentos")}>
+            <button type="button" className="button-secondary" onClick={() => navegar("/contas/pagamentos")}>
               <Wallet size={15} strokeWidth={2} /> {pedido.numero}: {pedido.status.toLowerCase()}
             </button>
           ) : null}

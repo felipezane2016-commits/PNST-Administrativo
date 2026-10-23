@@ -26,7 +26,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-export type Contador = "notificacoes" | "conferencia" | "ordens" | "pagamentos" | "aprovacoes";
+export type Contador = "notificacoes" | "conferencia" | "ordens" | "pagamentos" | "aprovacoes" | "contas";
 
 export type ItemMenu = {
   rota: string;
@@ -34,6 +34,8 @@ export type ItemMenu = {
   icone: LucideIcon;
   /** Sem módulo: aparece para qualquer pessoa logada (ex.: notificações). */
   modulo?: Modulo;
+  /** Some para quem tem este módulo (ele já chega à página por dentro do módulo). */
+  ocultarCom?: Modulo;
   exige?: Permissao;
   contador?: Contador;
 };
@@ -55,8 +57,9 @@ export const MENU_ESCRITORIO: Grupo[] = [
     rotulo: "Workflows",
     itens: [
       { rota: "/prestadores", rotulo: "Prestadores", icone: Truck, modulo: "prestadores", contador: "conferencia" },
-      { rota: "/contas", rotulo: "Account Management", icone: Landmark, modulo: "contas" },
-      { rota: "/pagamentos", rotulo: "Pagamentos", icone: Wallet, contador: "pagamentos" },
+      { rota: "/contas", rotulo: "Account Management", icone: Landmark, modulo: "contas", contador: "contas" },
+      // Quem pede pagamento sem ter o Account Management (outras áreas) entra por aqui.
+      { rota: "/contas/pagamentos", rotulo: "Pagamentos", icone: Wallet, ocultarCom: "contas", contador: "pagamentos" },
     ],
   },
   {
@@ -99,48 +102,44 @@ export const MENUS_MODULO: MenuModulo[] = [
     titulo: "Account Management",
     prefixo: "/contas",
     grupos: [
-      { rotulo: "Principal", itens: [{ rota: "/contas", rotulo: "Tarefas", icone: ListChecks }] },
+      { rotulo: "Principal", itens: [{ rota: "/contas", rotulo: "Tarefas", icone: ListChecks, modulo: "contas" }] },
+      {
+        // Sem módulo: quem pede pagamento de outra área também usa estas páginas
+        // (as próprias páginas e o banco decidem o que cada um vê e faz).
+        rotulo: "Pagamentos",
+        itens: [
+          { rota: "/contas/pagamentos", rotulo: "Pagamentos", icone: Wallet, contador: "pagamentos" },
+          { rota: "/contas/pagamentos/aprovacoes", rotulo: "Aprovações", icone: ShieldCheck, contador: "aprovacoes" },
+          { rota: "/contas/pagamentos/fornecedores", rotulo: "Fornecedores", icone: Building2 },
+          { rota: "/contas/pagamentos/regras", rotulo: "Regras de aprovação", icone: Settings2 },
+        ],
+      },
       {
         rotulo: "Banco Industrial",
         itens: [
-          { rota: "/contas/banco", rotulo: "Painel de câmbio", icone: LineChart },
-          { rota: "/contas/taxas", rotulo: "Taxas diárias", icone: Banknote },
-          { rota: "/contas/ordens", rotulo: "Ordens de pagamento", icone: ClipboardCheck, contador: "ordens" },
-          { rota: "/contas/economia", rotulo: "Economia potencial", icone: PiggyBank },
+          { rota: "/contas/banco", rotulo: "Painel de câmbio", icone: LineChart, modulo: "contas" },
+          { rota: "/contas/taxas", rotulo: "Taxas diárias", icone: Banknote, modulo: "contas" },
+          { rota: "/contas/ordens", rotulo: "Ordens de pagamento", icone: ClipboardCheck, contador: "ordens", modulo: "contas" },
+          { rota: "/contas/economia", rotulo: "Economia potencial", icone: PiggyBank, modulo: "contas" },
         ],
       },
       {
         rotulo: "Conciliação bancária",
         itens: [
-          { rota: "/contas/conciliacao", rotulo: "Painel da conciliação", icone: Scale },
-          { rota: "/contas/conciliacao/conciliar", rotulo: "Conciliar", icone: GitCompareArrows },
-          { rota: "/contas/conciliacao/demonstrativo", rotulo: "Demonstrativo", icone: FileSpreadsheet },
-          { rota: "/contas/conciliacao/contas", rotulo: "Contas bancárias", icone: Landmark },
-        ],
-      },
-    ],
-  },
-  {
-    titulo: "Pagamentos",
-    prefixo: "/pagamentos",
-    grupos: [
-      {
-        rotulo: "Contas a pagar",
-        itens: [
-          { rota: "/pagamentos", rotulo: "Pagamentos", icone: Wallet, contador: "pagamentos" },
-          { rota: "/pagamentos/aprovacoes", rotulo: "Aprovações", icone: ShieldCheck, contador: "aprovacoes" },
-        ],
-      },
-      {
-        rotulo: "Cadastros",
-        itens: [
-          { rota: "/pagamentos/fornecedores", rotulo: "Fornecedores", icone: Building2 },
-          { rota: "/pagamentos/regras", rotulo: "Regras de aprovação", icone: Settings2 },
+          { rota: "/contas/conciliacao", rotulo: "Painel da conciliação", icone: Scale, modulo: "contas" },
+          { rota: "/contas/conciliacao/conciliar", rotulo: "Conciliar", icone: GitCompareArrows, modulo: "contas" },
+          { rota: "/contas/conciliacao/demonstrativo", rotulo: "Demonstrativo", icone: FileSpreadsheet, modulo: "contas" },
+          { rota: "/contas/conciliacao/contas", rotulo: "Contas bancárias", icone: Landmark, modulo: "contas" },
         ],
       },
     ],
   },
 ];
+
+/** Endereços antigos de pagamentos (antes de irem para o Account Management). */
+export function rotaNovaDePagamentos(caminho: string) {
+  return casa(caminho, "/pagamentos") ? `/contas${caminho}` : null;
+}
 
 function casa(caminho: string, prefixo: string) {
   return caminho === prefixo || caminho.startsWith(`${prefixo}/`);
@@ -159,6 +158,8 @@ export function moduloDaRota(caminho: string): Modulo | null {
     ["/contas", "contas"],
   ];
   if (caminho === "/") return "visao";
+  // Pagamentos vive no Account Management, mas qualquer pessoa da equipe pede.
+  if (casa(caminho, "/contas/pagamentos")) return null;
   return mapa.find(([prefixo]) => casa(caminho, prefixo))?.[1] ?? null;
 }
 

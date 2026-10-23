@@ -97,11 +97,6 @@ Rotas do admin:
   - `/calendario`
   - `/documentos`
   - `/usuarios` (só com permissão `usuarios.gerenciar`)
-- **Pagamentos** (qualquer pessoa logada pede; cada um vê o que lhe cabe):
-  - `/pagamentos` pedidos, conferência e pagamento
-  - `/pagamentos/aprovacoes` fila do aprovador
-  - `/pagamentos/fornecedores` cadastro e validação de dados bancários
-  - `/pagamentos/regras` aprovador e substituto
 - **Prestadores**:
   - `/prestadores` painel
   - `/prestadores/conferencia`: lotes por prestador × competência. Aprovar ou
@@ -115,6 +110,13 @@ Rotas do admin:
   - `/contas/taxas` (com exportação CSV)
   - `/contas/ordens` ordens de pagamento do Banco Industrial (fluxo completo)
   - `/contas/economia`
+  - **Pagamentos** (dentro do Account Management, mas qualquer pessoa logada
+    pede e acompanha os próprios pedidos; quem não tem o módulo entra pelo item
+    "Pagamentos" do menu inicial; `/pagamentos/...` antigo redireciona):
+    - `/contas/pagamentos` pedidos, conferência e pagamento
+    - `/contas/pagamentos/aprovacoes` fila do aprovador
+    - `/contas/pagamentos/fornecedores` cadastro e validação de dados bancários
+    - `/contas/pagamentos/regras` aprovador e substituto
   - **Conciliação bancária**:
     - `/contas/conciliacao` painel das contas no mês
     - `/contas/conciliacao/conciliar` extrato × razão

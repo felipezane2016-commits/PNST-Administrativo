@@ -5,7 +5,7 @@ import { lazy, Suspense, type ComponentType, type LazyExoticComponent } from "re
 import { Redirect, Route, Switch, useLocation } from "wouter";
 import CascaAdmin, { rotaInicial } from "./CascaAdmin";
 import Vazio from "./componentes/Vazio";
-import { moduloDaRota } from "./menu";
+import { moduloDaRota, rotaNovaDePagamentos } from "./menu";
 import VisaoGeral from "./paginas/VisaoGeral";
 import Cabecalho from "./componentes/Cabecalho";
 
@@ -35,10 +35,10 @@ const PAGINAS: Pagina[] = [
   { padrao: "/contas/taxas", titulo: "Taxas diárias", Componente: lazy(() => import("./paginas/contas/Taxas")) },
   { padrao: "/contas/ordens", titulo: "Ordens de pagamento", Componente: lazy(() => import("./paginas/contas/ordens/Ordens")) },
   { padrao: "/contas/economia", titulo: "Economia potencial", Componente: lazy(() => import("./paginas/contas/Economia")) },
-  { padrao: "/pagamentos", titulo: "Pagamentos", Componente: lazy(() => import("./paginas/pagamentos/Pagamentos")) },
-  { padrao: "/pagamentos/aprovacoes", titulo: "Aprovações", Componente: lazy(() => import("./paginas/pagamentos/Aprovacoes")) },
-  { padrao: "/pagamentos/fornecedores", titulo: "Fornecedores", Componente: lazy(() => import("./paginas/pagamentos/Fornecedores")) },
-  { padrao: "/pagamentos/regras", titulo: "Regras de aprovação", Componente: lazy(() => import("./paginas/pagamentos/RegrasAprovacao")) },
+  { padrao: "/contas/pagamentos", titulo: "Pagamentos", Componente: lazy(() => import("./paginas/pagamentos/Pagamentos")) },
+  { padrao: "/contas/pagamentos/aprovacoes", titulo: "Aprovações", Componente: lazy(() => import("./paginas/pagamentos/Aprovacoes")) },
+  { padrao: "/contas/pagamentos/fornecedores", titulo: "Fornecedores", Componente: lazy(() => import("./paginas/pagamentos/Fornecedores")) },
+  { padrao: "/contas/pagamentos/regras", titulo: "Regras de aprovação", Componente: lazy(() => import("./paginas/pagamentos/RegrasAprovacao")) },
   { padrao: "/contas/conciliacao", titulo: "Painel da conciliação", Componente: lazy(() => import("./paginas/conciliacao/PainelConciliacao")) },
   { padrao: "/contas/conciliacao/conciliar", titulo: "Conciliar", Componente: lazy(() => import("./paginas/conciliacao/Conciliar")) },
   { padrao: "/contas/conciliacao/demonstrativo", titulo: "Demonstrativo", Componente: lazy(() => import("./paginas/conciliacao/Demonstrativo")) },
@@ -60,6 +60,10 @@ export default function RotasAdmin() {
   const [caminho] = useLocation();
 
   if (!usuario) return <Redirect to="/login" />;
+
+  // Links antigos (avisos já enviados, favoritos) para /pagamentos levam ao endereço novo.
+  const novaRota = rotaNovaDePagamentos(caminho);
+  if (novaRota) return <Redirect to={novaRota} replace />;
 
   const pagina =
     PAGINAS.find((item) => item.padrao === caminho) ??

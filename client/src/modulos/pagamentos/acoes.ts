@@ -43,7 +43,7 @@ export function solicitarPagamento(pedido: Pedido, usuario: Usuario): Pagamento 
     historico: [{ quando: agora(), autor: usuario.nome, texto: pedido.urgente ? "Pagamento solicitado (urgente)." : "Pagamento solicitado." }],
   };
   pagamentos.atualizar((lista) => [...lista, novo]);
-  notificar({ tipo: pedido.urgente ? "atencao" : "tarefa", titulo: `${pedido.urgente ? "Pagamento urgente" : "Novo pagamento"} para conferir`, corpo: `${rotulo(novo)} — pedido por ${usuario.nome}.`, destino: "/pagamentos" });
+  notificar({ tipo: pedido.urgente ? "atencao" : "tarefa", titulo: `${pedido.urgente ? "Pagamento urgente" : "Novo pagamento"} para conferir`, corpo: `${rotulo(novo)} — pedido por ${usuario.nome}.`, destino: "/contas/pagamentos" });
   return novo;
 }
 
@@ -61,7 +61,7 @@ export function conferir(id: string, usuario: Usuario): string | null {
   const erro = recusa(podeConferir(usuario, pagamento));
   if (erro) return erro;
   alterar(id, usuario.nome, "Conferido: documento, valor e dados de pagamento ok.", () => ({ status: "Aguardando aprovação", conferencia: { porId: usuario.id, por: usuario.nome, em: agora() } }));
-  notificar({ tipo: pagamento.urgente ? "atencao" : "tarefa", titulo: "Pagamento aguardando sua aprovação", corpo: rotulo(pagamento), destino: "/pagamentos/aprovacoes" });
+  notificar({ tipo: pagamento.urgente ? "atencao" : "tarefa", titulo: "Pagamento aguardando sua aprovação", corpo: rotulo(pagamento), destino: "/contas/pagamentos/aprovacoes" });
   return null;
 }
 
@@ -74,7 +74,7 @@ export function devolver(id: string, motivo: string, usuario: Usuario): string |
   const erro = recusa(permitido);
   if (erro) return erro;
   alterar(id, usuario.nome, `Devolvido: ${motivo.trim()}`, () => ({ status: "Devolvido", motivo: motivo.trim() }));
-  notificar({ tipo: "atencao", titulo: "Pagamento devolvido para correção", corpo: `${rotulo(pagamento)} — ${motivo.trim()}`, destino: "/pagamentos" });
+  notificar({ tipo: "atencao", titulo: "Pagamento devolvido para correção", corpo: `${rotulo(pagamento)} — ${motivo.trim()}`, destino: "/contas/pagamentos" });
   return null;
 }
 
@@ -93,7 +93,7 @@ export function aprovar(id: string, usuario: Usuario, dadosConfirmados = false):
     validarFornecedor(fornecedor.id, usuario.nome);
   }
   alterar(id, usuario.nome, "Aprovado.", () => ({ status: "Aprovado", aprovacao: { porId: usuario.id, por: usuario.nome, em: agora() } }));
-  notificar({ tipo: "sucesso", titulo: "Pagamento aprovado", corpo: `${rotulo(pagamento)} — pode ser pago.`, destino: "/pagamentos" });
+  notificar({ tipo: "sucesso", titulo: "Pagamento aprovado", corpo: `${rotulo(pagamento)} — pode ser pago.`, destino: "/contas/pagamentos" });
   return null;
 }
 
@@ -104,7 +104,7 @@ export function reprovar(id: string, motivo: string, usuario: Usuario): string |
   const erro = recusa(podeAprovar(usuario, pagamento, configAprovacao.ler(), HOJE));
   if (erro) return erro;
   alterar(id, usuario.nome, `Reprovado: ${motivo.trim()}`, () => ({ status: "Reprovado", motivo: motivo.trim() }));
-  notificar({ tipo: "atencao", titulo: "Pagamento reprovado", corpo: `${rotulo(pagamento)} — ${motivo.trim()}`, destino: "/pagamentos" });
+  notificar({ tipo: "atencao", titulo: "Pagamento reprovado", corpo: `${rotulo(pagamento)} — ${motivo.trim()}`, destino: "/contas/pagamentos" });
   return null;
 }
 
@@ -144,7 +144,7 @@ export function registrarPagamento(id: string, dados: { data: string; contaId: s
     const [prestadorId, competencia] = pagamento.origemId.split("|");
     marcarPago(prestadorId, competencia);
   }
-  notificar({ tipo: "sucesso", titulo: "Pagamento realizado", corpo: rotulo(pagamento), destino: "/pagamentos" });
+  notificar({ tipo: "sucesso", titulo: "Pagamento realizado", corpo: rotulo(pagamento), destino: "/contas/pagamentos" });
   return null;
 }
 
@@ -193,7 +193,7 @@ export function solicitarDoLote(lote: Lote, usuario: Usuario): Pagamento | null 
     historico: [{ quando: agora(), autor: usuario.nome, texto: "Pedido gerado pela conferência de prestadores (recibos conferidos)." }],
   };
   pagamentos.atualizar((lista) => [...lista, novo]);
-  notificar({ tipo: "tarefa", titulo: "Pagamento aguardando sua aprovação", corpo: rotulo(novo), destino: "/pagamentos/aprovacoes" });
+  notificar({ tipo: "tarefa", titulo: "Pagamento aguardando sua aprovação", corpo: rotulo(novo), destino: "/contas/pagamentos/aprovacoes" });
   return novo;
 }
 
@@ -209,7 +209,7 @@ export function salvarFornecedor(dados: Fornecedor, autor: string) {
     historico: [...(antes?.historico ?? []), { quando: agora(), autor, texto }],
   };
   fornecedores.atualizar((lista) => gravarItem(lista, registro));
-  if (mudou) notificar({ tipo: "atencao", titulo: "Dados bancários de fornecedor alterados", corpo: `${dados.nome}: confirme por telefone antes do próximo pagamento.`, destino: "/pagamentos/fornecedores" });
+  if (mudou) notificar({ tipo: "atencao", titulo: "Dados bancários de fornecedor alterados", corpo: `${dados.nome}: confirme por telefone antes do próximo pagamento.`, destino: "/contas/pagamentos/fornecedores" });
 }
 
 export function validarFornecedor(id: string, autor: string) {

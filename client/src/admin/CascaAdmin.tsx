@@ -8,7 +8,7 @@ import { montarLotes } from "@/modulos/prestadores/regras";
 import { ArrowLeft, Building2, FileText, Landmark, LayoutGrid, LogOut, Menu, Moon, Receipt, Sun, UserCog, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
-import { itemAtivo, MENU_ESCRITORIO, menuDaRota, type Contador, type Grupo, type ItemMenu } from "./menu";
+import { itemAtivo, MENU_ESCRITORIO, MENUS_MODULO, menuDaRota, type Contador, type Grupo, type ItemMenu } from "./menu";
 import Marca from "@/components/Marca";
 import AvisoRenovacao from "@/components/AvisoRenovacao";
 import BuscaGlobal, { type ItemBusca } from "@/components/BuscaGlobal";
@@ -35,6 +35,7 @@ export function rotaInicial(usuario: Usuario) {
 function visivel(usuario: Usuario, item: ItemMenu) {
   if (item.exige && !pode(usuario, item.exige)) return false;
   if (item.modulo && !veModulo(usuario, item.modulo)) return false;
+  if (item.ocultarCom && veModulo(usuario, item.ocultarCom)) return false;
   return true;
 }
 
@@ -58,16 +59,21 @@ function useContadores(usuario: Usuario): Record<Contador, number> {
   const listaTaxas = useColecao(taxas);
   const listaPagamentos = useColecao(pagamentos);
   const config = useColecao(configAprovacao);
-  return useMemo(
-    () => ({
+  return useMemo(() => {
+    // Ordens que pedem ação hoje: fechar D+n, taxa-alvo atingida, OK do banco atrasado.
+    const ordensHoje = alertasDasOrdens(listaOrdens, listaTaxas, HOJE).length;
+    const doPagamento = contadoresPagamentos(usuario, listaPagamentos, config);
+    return {
       notificacoes: avisos.filter(aviso => !aviso.lida).length,
       conferencia: montarLotes(listaRecibos, listaFechamentos, listaPrestadores).filter(
         lote => lote.situacao === "Aguardando conferência" || lote.pendentes > 0
       ).length,
-      // Ordens que pedem ação hoje: fechar D+n, taxa-alvo atingida, OK do banco atrasado.
-      ordens: alertasDasOrdens(listaOrdens, listaTaxas, HOJE).length,
-      ...contadoresPagamentos(usuario, listaPagamentos, config),
-    }),
+      ordens: ordensHoje,
+      ...doPagamento,
+      // Na entrada do Account Management: tudo o que espera a pessoa lá dentro.
+      contas: ordensHoje + doPagamento.pagamentos,
+    };
+  },
     [avisos, listaRecibos, listaFechamentos, listaPrestadores, listaOrdens, listaTaxas, usuario, listaPagamentos, config]
   );
 }
@@ -77,7 +83,11 @@ type Props = { usuario: Usuario; titulo: string; children: ReactNode };
 /** Itens da busca do topo: páginas do menu e registros que a pessoa pode ver. */
 function itensDeBusca(usuario: Usuario, navegar: (rota: string) => void): ItemBusca[] {
   const itens: ItemBusca[] = [];
-  const paginas = MENU_ESCRITORIO.flatMap((grupo) => grupo.itens).filter((item) => visivel(usuario, item));
+  // Páginas do menu inicial e das áreas (ex.: Pagamentos, dentro do Account Management).
+  const daArea = MENUS_MODULO.flatMap((menu) => menu.grupos.flatMap((grupo) => grupo.itens).filter((item) => item.rota !== menu.prefixo));
+  const paginas = [...MENU_ESCRITORIO.flatMap((grupo) => grupo.itens), ...daArea]
+    .filter((item) => visivel(usuario, item))
+    .filter((item, i, lista) => lista.findIndex((outro) => outro.rota === item.rota) === i);
   for (const pagina of paginas) {
     itens.push({ id: `pg-${pagina.rota}`, grupo: "Páginas", titulo: pagina.rotulo, icone: <LayoutGrid size={14} />, abrir: () => navegar(pagina.rota) });
   }
