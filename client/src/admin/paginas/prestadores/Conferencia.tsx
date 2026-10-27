@@ -7,7 +7,9 @@ import Selo, { type Tom } from "@/admin/componentes/Selo";
 import Vazio from "@/admin/componentes/Vazio";
 import StatusPill from "@/components/StatusPill";
 import { formatBRL, formatMonth, type Receipt } from "@/lib/portal";
-import { aprovarRecibo, devolverRecibo, finalizarConferencia } from "@/modulos/prestadores/acoes";
+import ReceiptModal from "@/components/ReceiptModal";
+import { aprovarRecibo, atualizarRecibo, devolverRecibo, excluirRecibo, finalizarConferencia } from "@/modulos/prestadores/acoes";
+import { AcoesRecibo, bloqueioDoRecibo, BotaoAnexo, ConfirmarExclusaoRecibo, DetalhesRecibo } from "./ReciboDetalhe";
 import { solicitarDoLote } from "@/modulos/pagamentos/acoes";
 import { pagamentos } from "@/modulos/pagamentos/colecoes";
 import { useColecao } from "@/_core/armazenamento/colecao";
@@ -15,7 +17,7 @@ import { useLocation } from "wouter";
 import { montarLotes, podeFinalizarConferencia, podeMarcarPago, type Lote } from "@/modulos/prestadores/regras";
 import type { SituacaoLote } from "@/modulos/prestadores/tipos";
 import { useDadosPrestadores } from "@/modulos/prestadores/usarDados";
-import { AlertCircle, Check, ClipboardCheck, FileText, Paperclip, Undo2, Wallet } from "lucide-react";
+import { AlertCircle, Check, ChevronDown, ChevronUp, ClipboardCheck, FileText, Undo2, Wallet } from "lucide-react";
 import { useState } from "react";
 
 const TOM_SITUACAO: Record<SituacaoLote, Tom> = {
@@ -31,6 +33,9 @@ export default function Conferencia() {
   const { prestadores, recibos, fechamentos } = useDadosPrestadores();
   const usuario = useUsuarioAtual();
   const podeAgir = pode(usuario, "registros.editar");
+  const podeExcluir = pode(usuario, "registros.excluir");
+  const [editando, setEditando] = useState<Receipt | null>(null);
+  const [removendo, setRemovendo] = useState<Receipt | null>(null);
   const [filtro, setFiltro] = useState<(typeof FILTROS)[number]>("Todos");
   const [chaveAberta, setChaveAberta] = useState<string | null>(null);
 
@@ -115,12 +120,53 @@ export default function Conferencia() {
         )}
       </section>
 
-      {aberto ? <GavetaLote lote={aberto} podeAgir={podeAgir} aoFechar={() => setChaveAberta(null)} /> : null}
+      {/* A gaveta some enquanto o formulário de um recibo dela está aberto, e volta depois. */}
+      {aberto && !editando && !removendo ? (
+        <GavetaLote lote={aberto} podeAgir={podeAgir} podeExcluir={podeExcluir} aoEditar={setEditando} aoExcluir={setRemovendo} aoFechar={() => setChaveAberta(null)} />
+      ) : null}
+      {editando ? (
+        <ReceiptModal
+          receipt={editando}
+          competencia={editando.competencia}
+          prestadorId={editando.prestadorId}
+          descricao="Correção pelo escritório: o prestador vê a alteração no portal."
+          onClose={() => setEditando(null)}
+          onSave={(draft) => {
+            atualizarRecibo(editando.id, draft);
+            setEditando(null);
+          }}
+        />
+      ) : null}
+      {removendo ? (
+        <ConfirmarExclusaoRecibo
+          recibo={removendo}
+          nomePrestador={prestadores.find((prestador) => prestador.id === removendo.prestadorId)?.nome ?? "Prestador"}
+          aoFechar={() => setRemovendo(null)}
+          aoConfirmar={() => {
+            excluirRecibo(removendo.id);
+            setRemovendo(null);
+          }}
+        />
+      ) : null}
     </>
   );
 }
 
-function GavetaLote({ lote, podeAgir, aoFechar }: { lote: Lote; podeAgir: boolean; aoFechar: () => void }) {
+function GavetaLote({
+  lote,
+  podeAgir,
+  podeExcluir,
+  aoEditar,
+  aoExcluir,
+  aoFechar,
+}: {
+  lote: Lote;
+  podeAgir: boolean;
+  podeExcluir: boolean;
+  aoEditar: (recibo: Receipt) => void;
+  aoExcluir: (recibo: Receipt) => void;
+  aoFechar: () => void;
+}) {
   const finalizar = podeAgir && podeFinalizarConferencia(lote);
   const usuario = useUsuarioAtual();
   const [, navegar] = useLocation();
@@ -183,9 +229,11 @@ function GavetaLote({ lote, podeAgir, aoFechar }: { lote: Lote; podeAgir: boolea
             {enviados && lote.fechamento?.submittedAt ? `Enviado em ${formatarDataHora(lote.fechamento.submittedAt)}` : "Não enviado"}
           </dd>
         </div>
-        <div>
+        <div className="data-list-cheio">
           <dt>Documento de faturamento</dt>
-          <dd>{lote.fechamento?.documentName ?? "—"}</dd>
+          <dd>
+            <BotaoAnexo id={lote.fechamento?.documentId ?? null} nome={lote.fechamento?.documentName ?? null} rotulo="Abrir documento" />
+          </dd>
         </div>
       </dl>
 
@@ -197,14 +245,37 @@ function GavetaLote({ lote, podeAgir, aoFechar }: { lote: Lote; podeAgir: boolea
       </div>
       <div className="ged-list">
         {lote.recibos.map((recibo) => (
-          <ReciboConferido key={recibo.id} recibo={recibo} podeAgir={podeAgir} />
+          <ReciboConferido
+            key={recibo.id}
+            recibo={recibo}
+            podeAgir={podeAgir}
+            podeExcluir={podeExcluir}
+            bloqueio={bloqueioDoRecibo(recibo, lote.fechamento)}
+            aoEditar={aoEditar}
+            aoExcluir={aoExcluir}
+          />
         ))}
       </div>
     </Gaveta>
   );
 }
 
-function ReciboConferido({ recibo, podeAgir }: { recibo: Receipt; podeAgir: boolean }) {
+function ReciboConferido({
+  recibo,
+  podeAgir,
+  podeExcluir,
+  bloqueio,
+  aoEditar,
+  aoExcluir,
+}: {
+  recibo: Receipt;
+  podeAgir: boolean;
+  podeExcluir: boolean;
+  bloqueio: string | null;
+  aoEditar: (recibo: Receipt) => void;
+  aoExcluir: (recibo: Receipt) => void;
+}) {
+  const [aberto, setAberto] = useState(false);
   const [devolvendo, setDevolvendo] = useState(false);
   const [nota, setNota] = useState("");
   const [erro, setErro] = useState<string | null>(null);
@@ -233,10 +304,9 @@ function ReciboConferido({ recibo, podeAgir }: { recibo: Receipt; podeAgir: bool
           {recibo.id} · {formatarData(recibo.serviceDate)}
         </span>
         <p className="ged-line-descricao">{recibo.description}</p>
-        <p className="field-hint field-hint-icone">
-          <Paperclip size={13} strokeWidth={2} />
-          {recibo.attachmentName ?? "Sem comprovante anexado"}
-        </p>
+        <div className="inline-row espaco-acima-curto">
+          <BotaoAnexo id={recibo.attachmentId ?? null} nome={recibo.attachmentName} />
+        </div>
         {recibo.reviewNote ? (
           <p className="cell-note">
             <AlertCircle size={13} strokeWidth={2} />
@@ -248,6 +318,14 @@ function ReciboConferido({ recibo, podeAgir }: { recibo: Receipt; podeAgir: bool
         <span className="money">{formatBRL(recibo.amount)}</span>
         <StatusPill status={recibo.status} />
       </div>
+
+      <div className="inline-row inline-row-justo recibo-rodape">
+        <button type="button" className="text-button text-button-neutro" onClick={() => setAberto(!aberto)} aria-expanded={aberto}>
+          {aberto ? <ChevronUp size={14} strokeWidth={2} /> : <ChevronDown size={14} strokeWidth={2} />} {aberto ? "Fechar recibo" : "Abrir recibo"}
+        </button>
+        <AcoesRecibo recibo={recibo} podeEditar={podeAgir} podeExcluir={podeExcluir} bloqueio={bloqueio} aoEditar={aoEditar} aoExcluir={aoExcluir} />
+      </div>
+      {aberto ? <DetalhesRecibo recibo={recibo} /> : null}
 
       {decidir && !devolvendo ? (
         <div className="inline-row inline-row-fim">

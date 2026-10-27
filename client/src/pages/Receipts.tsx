@@ -2,8 +2,11 @@ import PortalShell from "@/components/PortalShell";
 import ReceiptModal from "@/components/ReceiptModal";
 import StatusPill from "@/components/StatusPill";
 import { usePortal } from "@/contexts/PortalContext";
+import { abrirAnexo } from "@/_core/armazenamento/anexos";
+import Painel from "@/admin/componentes/Painel";
 import {
   canEditReceipt,
+  canRemoveReceipt,
   filterReceipts,
   formatBRL,
   formatDate,
@@ -39,7 +42,10 @@ export default function Receipts() {
     updateReceipt,
     submitReceipt,
     removeReceipt,
+    closingFor,
+    prestadorId,
   } = usePortal();
+  const [removendo, setRemovendo] = useState<Receipt | null>(null);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("Todos");
   const [editing, setEditing] = useState<Receipt | null>(null);
@@ -220,7 +226,17 @@ export default function Receipts() {
                       <td>{formatMonth(receipt.competencia)}</td>
                       <td>{formatDate(receipt.serviceDate)}</td>
                       <td>
-                        {receipt.attachmentName ? (
+                        {receipt.attachmentId ? (
+                          <button
+                            type="button"
+                            className="icon-button icon-button-pequeno"
+                            aria-label={`Abrir anexo de ${receipt.id}: ${receipt.attachmentName ?? ""}`}
+                            title={receipt.attachmentName ?? "Abrir anexo"}
+                            onClick={() => void abrirAnexo(receipt.attachmentId!, receipt.attachmentName ?? receipt.id)}
+                          >
+                            <Paperclip size={14} strokeWidth={1.9} />
+                          </button>
+                        ) : receipt.attachmentName ? (
                           <Paperclip
                             size={14}
                             strokeWidth={1.9}
@@ -236,7 +252,7 @@ export default function Receipts() {
                       </td>
                       <td>
                         <div className="cell-actions">
-                          {canEditReceipt(receipt) ? (
+                          {canEditReceipt(receipt, closingFor(receipt.competencia)) ? (
                             <button
                               type="button"
                               className="text-button"
@@ -257,13 +273,13 @@ export default function Receipts() {
                               <Send size={15} strokeWidth={1.9} />
                             </button>
                           ) : null}
-                          {receipt.status === "Rascunho" ? (
+                          {canRemoveReceipt(receipt, closingFor(receipt.competencia)) ? (
                             <button
                               type="button"
                               className="icon-button icon-button-danger"
                               aria-label={`Excluir ${receipt.id}`}
-                              title="Excluir rascunho"
-                              onClick={() => removeReceipt(receipt.id)}
+                              title="Excluir recibo"
+                              onClick={() => setRemovendo(receipt)}
                             >
                               <Trash2 size={15} strokeWidth={1.9} />
                             </button>
@@ -279,7 +295,7 @@ export default function Receipts() {
               <span>
                 {visible.length} de {receipts.length} recibo(s)
               </span>
-              <span>Recibos aprovados não podem mais ser editados</span>
+              <span>Recibos aprovados, ou de um mês já conferido pelo escritório, não podem mais ser editados nem excluídos</span>
             </div>
           </>
         )}
@@ -289,9 +305,32 @@ export default function Receipts() {
         <ReceiptModal
           receipt={editing}
           competencia={currentCompetencia}
+          prestadorId={prestadorId}
           onClose={closeModal}
           onSave={handleSave}
         />
+      ) : null}
+      {removendo ? (
+        <Painel
+          rotulo="Excluir recibo"
+          titulo={`Excluir o recibo ${removendo.id}?`}
+          aoFechar={() => setRemovendo(null)}
+          aoEnviar={() => {
+            removeReceipt(removendo.id);
+            setRemovendo(null);
+          }}
+          textoEnviar="Excluir recibo"
+        >
+          <p>
+            <strong>{removendo.client}</strong> — {formatBRL(removendo.amount)}, serviço em {formatDate(removendo.serviceDate)}.
+          </p>
+          <p className="texto-perigo">
+            {removendo.status === "Enviado"
+              ? "O recibo já foi enviado: ele sai também da conferência do escritório. "
+              : ""}
+            O arquivo anexado é apagado junto. Não dá para desfazer.
+          </p>
+        </Painel>
       ) : null}
     </PortalShell>
   );

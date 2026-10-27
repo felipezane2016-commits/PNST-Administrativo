@@ -36,10 +36,14 @@ async function storage() {
   return supabase().storage.from("anexos");
 }
 
-export async function guardarAnexo(arquivo: File): Promise<Anexo> {
+/**
+ * `pasta` separa os arquivos de quem não é da equipe: o prestador só lê e
+ * grava em `prestadores/<id dele>/...` (política do bucket).
+ */
+export async function guardarAnexo(arquivo: File, pasta?: string): Promise<Anexo> {
   if (MODO_REAL) {
     const nomeSeguro = arquivo.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w.\-]+/g, "_");
-    const caminho = `${new Date().toISOString().slice(0, 7)}/${crypto.randomUUID()}/${nomeSeguro}`;
+    const caminho = `${pasta ?? new Date().toISOString().slice(0, 7)}/${crypto.randomUUID()}/${nomeSeguro}`;
     const { error } = await (await storage()).upload(caminho, arquivo, { contentType: arquivo.type || "application/pdf" });
     if (error) throw error;
     return { id: caminho, nome: arquivo.name, tipo: arquivo.type || "application/pdf", blob: arquivo };
@@ -72,6 +76,32 @@ export async function apagarAnexo(id: string) {
   } catch {
     // Sem IndexedDB (aba privada, por exemplo) não há o que apagar.
   }
+}
+
+/** Pasta dos arquivos que o prestador anexa (recibos e fechamento). */
+export const pastaDoPrestador = (prestadorId: string, competencia: string) => `prestadores/${prestadorId}/${competencia}`;
+
+/**
+ * Abre o anexo numa aba nova (PDF e imagem o navegador mostra; o resto baixa).
+ * A aba é aberta antes de buscar o arquivo: aberta depois, o navegador bloqueia.
+ */
+export async function abrirAnexo(id: string, nome: string): Promise<boolean> {
+  const aba = window.open("", "_blank");
+  const anexo = await lerAnexo(id);
+  if (!anexo) {
+    aba?.close();
+    return false;
+  }
+  const visivel = /^(application\/pdf|image\/)/.test(anexo.tipo || anexo.blob.type);
+  if (aba && visivel) {
+    const url = URL.createObjectURL(anexo.blob);
+    aba.location.href = url;
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } else {
+    aba?.close();
+    baixarBlob(anexo.blob, nome);
+  }
+  return true;
 }
 
 export function baixarBlob(blob: Blob, nome: string) {

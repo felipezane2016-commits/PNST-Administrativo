@@ -1,5 +1,6 @@
 import { HOJE } from "@/_core/tempo";
-import { formatBRL, formatMonth } from "@/lib/portal";
+import { apagarAnexo } from "@/_core/armazenamento/anexos";
+import { competenciaOf, formatBRL, formatMonth, parseAmount, type ReceiptDraft } from "@/lib/portal";
 import { notificar } from "@/modulos/notificacoes/colecao";
 import { fechamentos, prestadores, recibos } from "./colecoes";
 import type { Prestador } from "./tipos";
@@ -18,6 +19,37 @@ export function devolverRecibo(id: string, nota: string) {
       recibo.id === id && recibo.status === "Enviado" ? { ...recibo, status: "Rejeitado", reviewNote: nota.trim() } : recibo,
     ),
   );
+}
+
+/** O escritório corrige um recibo (mesmas regras do portal: não aprovado e mês aberto). */
+export function atualizarRecibo(id: string, draft: ReceiptDraft) {
+  recibos.atualizar((lista) =>
+    lista.map((recibo) =>
+      recibo.id === id
+        ? {
+            ...recibo,
+            competencia: competenciaOf(draft.serviceDate),
+            serviceDate: draft.serviceDate,
+            category: draft.category,
+            client: draft.client.trim(),
+            caseRef: draft.caseRef.trim(),
+            requester: draft.requester.trim(),
+            description: draft.description.trim(),
+            amount: parseAmount(draft.amount),
+            attachmentName: draft.attachmentName,
+            attachmentId: draft.attachmentId,
+          }
+        : recibo,
+    ),
+  );
+}
+
+/** Remove o recibo e o arquivo anexado a ele. */
+export function excluirRecibo(id: string) {
+  const alvo = recibos.ler().find((recibo) => recibo.id === id);
+  if (!alvo) return;
+  recibos.atualizar((lista) => lista.filter((recibo) => recibo.id !== id));
+  if (alvo.attachmentId) void apagarAnexo(alvo.attachmentId);
 }
 
 export function finalizarConferencia(prestadorId: string, competencia: string) {

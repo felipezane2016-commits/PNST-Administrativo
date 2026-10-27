@@ -1,3 +1,4 @@
+import { apagarAnexo } from "@/_core/armazenamento/anexos";
 import { criarColecao, useColecao } from "@/_core/armazenamento/colecao";
 import {
   closingTotal,
@@ -27,6 +28,8 @@ export const sessaoPortal = criarColecao<SessaoPortal>("sessao-portal", () => ({
 
 type PortalContextValue = {
   provider: Provider;
+  /** Id do prestador logado: pasta dos arquivos dele. */
+  prestadorId: string;
   signedIn: boolean;
   receipts: Receipt[];
   closings: Closing[];
@@ -39,7 +42,7 @@ type PortalContextValue = {
   submitReceipt: (id: string) => void;
   removeReceipt: (id: string) => void;
   closingFor: (competencia: string) => Closing;
-  attachClosingDocument: (competencia: string, documentName: string | null) => void;
+  attachClosingDocument: (competencia: string, documentName: string | null, documentId?: string | null) => void;
   submitClosing: (competencia: string) => void;
 };
 
@@ -68,6 +71,7 @@ function draftToFields(draft: ReceiptDraft) {
     description: draft.description.trim(),
     amount: parseAmount(draft.amount),
     attachmentName: draft.attachmentName,
+    attachmentId: draft.attachmentId,
   };
 }
 
@@ -175,7 +179,12 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   );
 
   const removeReceipt = useCallback(
-    (id: string) => recibos.atualizar((lista) => lista.filter((recibo) => !(recibo.id === id && meus(recibo)))),
+    (id: string) => {
+      const alvo = recibos.ler().find((recibo) => recibo.id === id && meus(recibo));
+      if (!alvo) return;
+      recibos.atualizar((lista) => lista.filter((recibo) => recibo !== alvo && recibo.id !== id));
+      if (alvo.attachmentId) void apagarAnexo(alvo.attachmentId);
+    },
     [meus],
   );
 
@@ -197,8 +206,12 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   );
 
   const attachClosingDocument = useCallback(
-    (competencia: string, documentName: string | null) => upsertClosing(competencia, { documentName }),
-    [upsertClosing],
+    (competencia: string, documentName: string | null, documentId: string | null = null) => {
+      const anterior = closingFor(competencia).documentId;
+      upsertClosing(competencia, { documentName, documentId });
+      if (anterior && anterior !== documentId) void apagarAnexo(anterior);
+    },
+    [upsertClosing, closingFor],
   );
 
   const submitClosing = useCallback(
@@ -226,6 +239,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const value = useMemo<PortalContextValue>(
     () => ({
       provider,
+      prestadorId: meuId,
       signedIn: Boolean(prestador),
       receipts,
       closings,
@@ -242,6 +256,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     }),
     [
       provider,
+      meuId,
       prestador,
       receipts,
       closings,

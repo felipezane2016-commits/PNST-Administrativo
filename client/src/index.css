@@ -3544,3 +3544,50 @@ button.kpi-card:hover {
   background: var(--subtle);
   border: 1px solid var(--border);
 }
+
+/* Recibo aberto na conferência e no histórico */
+.ged-line-topo > .recibo-rodape,
+.ged-line-topo > .data-list-recibo {
+  flex-basis: 100%;
+}
+.recibo-rodape {
+  justify-content: space-between;
+}
+.data-list-recibo {
+  margin-top: 4px;
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: var(--subtle);
+  border: 1px solid var(--border);
+}
+
+/* Regras de aprovação: hierarquia */
+.lista-alcadas {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lista-alcadas li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--subtle);
+}
+.lista-alcadas strong {
+  font: 700 13px/1.3 var(--font-display);
+}
+.lista-alcadas span {
+  color: var(--muted-foreground);
+  font-size: 12.5px;
+}
+@media (max-width: 760px) {
+  .lista-alcadas {
+    grid-template-columns: 1fr;
+  }
+}

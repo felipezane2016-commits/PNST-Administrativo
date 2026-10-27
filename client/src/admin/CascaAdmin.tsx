@@ -1,6 +1,6 @@
 import { useColecao } from "@/_core/armazenamento/colecao";
 import { iniciais, pode, PAPEIS, veModulo, type Usuario } from "@/_core/identidade/permissoes";
-import { sair } from "@/_core/identidade/sessao";
+import { sair, usuarios } from "@/_core/identidade/sessao";
 import { useTheme } from "@/contexts/ThemeContext";
 import { notificacoes } from "@/modulos/notificacoes/colecao";
 import { fechamentos, prestadores, recibos } from "@/modulos/prestadores/colecoes";
@@ -18,7 +18,7 @@ import { documentos } from "@/modulos/escritorio/colecoes";
 import { ordens, taxas, tarefasContas } from "@/modulos/contas/colecoes";
 import { alertasDasOrdens } from "@/modulos/contas/regras";
 import { configAprovacao, pagamentos } from "@/modulos/pagamentos/colecoes";
-import { aprovadorVigente, ehFinanceiro, podeAprovar } from "@/modulos/pagamentos/regras";
+import { ehFinanceiro, podeAprovar } from "@/modulos/pagamentos/regras";
 import type { ConfigAprovacao, Pagamento } from "@/modulos/pagamentos/tipos";
 import { formatarData, HOJE } from "@/_core/tempo";
 
@@ -43,8 +43,9 @@ function visivel(usuario: Usuario, item: ItemMenu) {
  * O que cada pessoa tem a fazer em pagamentos: o aprovador vê a fila de
  * aprovação; o financeiro, o que conferir e pagar; quem pediu, o que voltou.
  */
-function contadoresPagamentos(usuario: Usuario, lista: Pagamento[], config: ConfigAprovacao) {
-  const aprovacoes = usuario.id === aprovadorVigente(config, HOJE) ? lista.filter((p) => podeAprovar(usuario, p, config, HOJE).ok).length : 0;
+function contadoresPagamentos(usuario: Usuario, lista: Pagamento[], config: ConfigAprovacao, pessoas: Usuario[]) {
+  // Cada um conta só o que é da alçada dele (um nível acima de quem pediu).
+  const aprovacoes = lista.filter((p) => podeAprovar(usuario, p, config, HOJE, pessoas).ok).length;
   const doFinanceiro = ehFinanceiro(usuario) ? lista.filter((p) => p.status === "Em conferência" || p.status === "Aprovado").length : 0;
   const devolvidos = lista.filter((p) => p.status === "Devolvido" && p.solicitanteId === usuario.id).length;
   return { aprovacoes, pagamentos: aprovacoes + doFinanceiro + devolvidos };
@@ -59,10 +60,11 @@ function useContadores(usuario: Usuario): Record<Contador, number> {
   const listaTaxas = useColecao(taxas);
   const listaPagamentos = useColecao(pagamentos);
   const config = useColecao(configAprovacao);
+  const pessoas = useColecao(usuarios);
   return useMemo(() => {
     // Ordens que pedem ação hoje: fechar D+n, taxa-alvo atingida, OK do banco atrasado.
     const ordensHoje = alertasDasOrdens(listaOrdens, listaTaxas, HOJE).length;
-    const doPagamento = contadoresPagamentos(usuario, listaPagamentos, config);
+    const doPagamento = contadoresPagamentos(usuario, listaPagamentos, config, pessoas);
     return {
       notificacoes: avisos.filter(aviso => !aviso.lida).length,
       conferencia: montarLotes(listaRecibos, listaFechamentos, listaPrestadores).filter(
@@ -74,7 +76,7 @@ function useContadores(usuario: Usuario): Record<Contador, number> {
       contas: ordensHoje + doPagamento.pagamentos,
     };
   },
-    [avisos, listaRecibos, listaFechamentos, listaPrestadores, listaOrdens, listaTaxas, usuario, listaPagamentos, config]
+    [avisos, listaRecibos, listaFechamentos, listaPrestadores, listaOrdens, listaTaxas, usuario, listaPagamentos, config, pessoas]
   );
 }
 

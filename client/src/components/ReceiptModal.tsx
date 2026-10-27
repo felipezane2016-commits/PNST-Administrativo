@@ -1,4 +1,6 @@
+import { abrirAnexo, apagarAnexo, guardarAnexo, pastaDoPrestador } from "@/_core/armazenamento/anexos";
 import {
+  competenciaOf,
   RECEIPT_CATEGORIES,
   validateReceiptDraft,
   type Receipt,
@@ -26,6 +28,7 @@ function emptyDraft(competencia: string): ReceiptDraft {
     description: "",
     amount: "",
     attachmentName: null,
+    attachmentId: null,
   };
 }
 
@@ -39,6 +42,7 @@ function receiptToDraft(receipt: Receipt): ReceiptDraft {
     description: receipt.description,
     amount: receipt.amount.toFixed(2).replace(".", ","),
     attachmentName: receipt.attachmentName,
+    attachmentId: receipt.attachmentId ?? null,
   };
 }
 
@@ -87,16 +91,34 @@ function Field({ id, label, error, hint, children }: FieldProps) {
 type ReceiptModalProps = {
   receipt: Receipt | null;
   competencia: string;
+  /** Dono do recibo: os arquivos vão para a pasta dele. */
+  prestadorId: string;
+  /** Texto do topo; o escritório usa um próprio ao editar recibo de prestador. */
+  descricao?: string;
   onClose: () => void;
   onSave: (draft: ReceiptDraft) => void;
 };
 
+/** Tamanho máximo do comprovante (o bucket aceita até 20 MB). */
+const LIMITE_ARQUIVO = 20 * 1024 * 1024;
+
 export default function ReceiptModal({
   receipt,
   competencia,
-  onClose,
+  prestadorId,
+  descricao,
+  onClose: fecharSemSalvar,
   onSave,
 }: ReceiptModalProps) {
+  // Arquivos enviados enquanto o formulário esteve aberto: os que não ficarem
+  // no recibo (trocados ou cancelados) são apagados para não sobrar lixo.
+  const enviadosAgora = useRef<string[]>([]);
+  const [enviando, setEnviando] = useState(false);
+  const [erroArquivo, setErroArquivo] = useState<string | null>(null);
+  const onClose = () => {
+    enviadosAgora.current.forEach((id) => void apagarAnexo(id));
+    fecharSemSalvar();
+  };
   const [draft, setDraft] = useState<ReceiptDraft>(() =>
     receipt ? receiptToDraft(receipt) : emptyDraft(competencia)
   );
@@ -125,8 +147,22 @@ export default function ReceiptModal({
       setErrors(current => ({ ...current, [field]: undefined }));
   }
 
-  function handleFile(event: ChangeEvent<HTMLInputElement>) {
-    update("attachmentName", event.target.files?.[0]?.name ?? null);
+  async function handleFile(event: ChangeEvent<HTMLInputElement>) {
+    const arquivo = event.target.files?.[0];
+    event.target.value = "";
+    if (!arquivo) return;
+    if (arquivo.size > LIMITE_ARQUIVO) return setErroArquivo("Arquivo maior que 20 MB. Envie uma versão menor (PDF ou foto).");
+    setErroArquivo(null);
+    setEnviando(true);
+    try {
+      const anexo = await guardarAnexo(arquivo, pastaDoPrestador(prestadorId, competenciaOf(draft.serviceDate) || competencia));
+      enviadosAgora.current.push(anexo.id);
+      setDraft((atual) => ({ ...atual, attachmentName: anexo.nome, attachmentId: anexo.id }));
+    } catch {
+      setErroArquivo("Não foi possível enviar o arquivo. Verifique a conexão e tente de novo.");
+    } finally {
+      setEnviando(false);
+    }
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -136,6 +172,10 @@ export default function ReceiptModal({
       setErrors(found);
       return;
     }
+    // Fica só o arquivo escolhido por último; o anterior do recibo sai.
+    enviadosAgora.current.filter((id) => id !== draft.attachmentId).forEach((id) => void apagarAnexo(id));
+    if (receipt?.attachmentId && receipt.attachmentId !== draft.attachmentId) void apagarAnexo(receipt.attachmentId);
+    enviadosAgora.current = [];
     onSave(draft);
   }
 
@@ -159,7 +199,7 @@ export default function ReceiptModal({
               {receipt ? "Editar recibo" : "Lançar recibo"}
             </h2>
             <p>
-              O recibo fica como rascunho até você enviá-lo para conferência.
+              {descricao ?? "O recibo fica como rascunho até você enviá-lo para conferência."}
             </p>
           </div>
           <button
@@ -295,7 +335,9 @@ export default function ReceiptModal({
             >
               <input
                 type="file"
+                accept="application/pdf,image/*"
                 onChange={handleFile}
+                disabled={enviando}
                 aria-labelledby="recibo-anexo-rotulo"
               />
               {draft.attachmentName ? (
@@ -303,13 +345,30 @@ export default function ReceiptModal({
               ) : (
                 <Paperclip size={19} strokeWidth={1.9} />
               )}
-              <strong>{draft.attachmentName ?? "Selecionar arquivo"}</strong>
+              <strong>{enviando ? "Enviando arquivo…" : (draft.attachmentName ?? "Selecionar arquivo")}</strong>
               <span>
                 {draft.attachmentName
                   ? "Clique para trocar"
                   : "NF, boleto ou recibo — PDF, JPG ou PNG"}
               </span>
             </label>
+            {draft.attachmentId ? (
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => void abrirAnexo(draft.attachmentId!, draft.attachmentName ?? "anexo")}
+              >
+                <Paperclip size={14} strokeWidth={2} /> Ver arquivo anexado
+              </button>
+            ) : draft.attachmentName ? (
+              <span className="field-hint">Este recibo é anterior ao envio de arquivos: anexe o comprovante de novo para o escritório conseguir abrir.</span>
+            ) : null}
+            {erroArquivo ? (
+              <span className="field-error" role="alert">
+                <AlertCircle size={13} strokeWidth={2} />
+                {erroArquivo}
+              </span>
+            ) : null}
           </div>
 
           <div className="modal-panel-footer">
@@ -320,7 +379,7 @@ export default function ReceiptModal({
             >
               Cancelar
             </button>
-            <button type="submit" className="button-primary">
+            <button type="submit" className="button-primary" disabled={enviando}>
               {receipt ? "Salvar alterações" : "Salvar rascunho"}
             </button>
           </div>

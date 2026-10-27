@@ -10,7 +10,7 @@ import { EMPRESAS, type Empresa } from "@/modulos/conciliacao/tipos";
 import { ordens } from "@/modulos/contas/colecoes";
 import { reenviar, solicitarPagamento, type Pedido } from "@/modulos/pagamentos/acoes";
 import { useDadosPagamentos } from "@/modulos/pagamentos/colecoes";
-import { aprovadorVigente, validarPedido, type ErrosPedido } from "@/modulos/pagamentos/regras";
+import { quemAprova, validarPedido, type ErrosPedido } from "@/modulos/pagamentos/regras";
 import { CATEGORIAS_PAGAMENTO, FORMAS_PAGAMENTO, type AnexoRef, type CategoriaPagamento, type FormaPagamento, type Pagamento } from "@/modulos/pagamentos/tipos";
 import { recibos } from "@/modulos/prestadores/colecoes";
 import { Paperclip, X } from "lucide-react";
@@ -22,7 +22,6 @@ export default function FormularioPagamento({ usuario, devolvido, aoFechar, aoSa
   const pessoas = useColecao(usuarios);
   const listaOrdens = useColecao(ordens);
   const listaRecibos = useColecao(recibos);
-  const aprovador = pessoas.find((p) => p.id === aprovadorVigente(config, HOJE));
   // Clientes já conhecidos pelo sistema, para o centro de custo não virar texto solto.
   const clientes = Array.from(new Set([...pagamentos.map((p) => p.cliente), ...listaOrdens.map((o) => o.cliente), ...listaRecibos.map((r) => r.client)].filter(Boolean))).sort();
 
@@ -108,7 +107,7 @@ export default function FormularioPagamento({ usuario, devolvido, aoFechar, aoSa
     <Painel
       rotulo={base ? `Correção de ${base.numero}` : "Contas a pagar"}
       titulo={base ? "Corrigir e reenviar" : "Solicitar pagamento"}
-      descricao={`Vai para a conferência do financeiro e depois para a aprovação de ${aprovador?.nome ?? "chefe da administração"}.`}
+      descricao={`Vai para a conferência do financeiro e depois para a aprovação de ${quemAprova({ solicitanteId: base?.solicitanteId ?? usuario.id }, pessoas, config, HOJE)}.`}
       aoFechar={aoFechar}
       aoEnviar={salvar}
       textoEnviar={base ? "Reenviar" : "Enviar pedido"}

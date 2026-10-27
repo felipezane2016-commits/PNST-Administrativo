@@ -1,4 +1,5 @@
 import { gravarItem } from "@/_core/armazenamento/colecao";
+import { usuarios } from "@/_core/identidade/sessao";
 import type { Usuario } from "@/_core/identidade/permissoes";
 import { gerarId, HOJE } from "@/_core/tempo";
 import { formatBRL, formatMonth } from "@/lib/portal";
@@ -7,7 +8,7 @@ import { notificar } from "@/modulos/notificacoes/colecao";
 import { marcarPago } from "@/modulos/prestadores/acoes";
 import type { Lote } from "@/modulos/prestadores/regras";
 import { configAprovacao, fornecedores, pagamentos } from "./colecoes";
-import { contrapartidaDa, dadosBancariosMudaram, podeAprovar, podeCancelar, podeConferir, podeCorrigir, podePagar, proximoNumero, type Resposta } from "./regras";
+import { contrapartidaDa, dadosBancariosMudaram, podeAprovar, quemAprova, podeCancelar, podeConferir, podeCorrigir, podePagar, proximoNumero, type Resposta } from "./regras";
 import type { AnexoRef, ConfigAprovacao, Fornecedor, Pagamento } from "./tipos";
 
 /**
@@ -61,7 +62,12 @@ export function conferir(id: string, usuario: Usuario): string | null {
   const erro = recusa(podeConferir(usuario, pagamento));
   if (erro) return erro;
   alterar(id, usuario.nome, "Conferido: documento, valor e dados de pagamento ok.", () => ({ status: "Aguardando aprovação", conferencia: { porId: usuario.id, por: usuario.nome, em: agora() } }));
-  notificar({ tipo: pagamento.urgente ? "atencao" : "tarefa", titulo: "Pagamento aguardando sua aprovação", corpo: rotulo(pagamento), destino: "/contas/pagamentos/aprovacoes" });
+  notificar({
+    tipo: pagamento.urgente ? "atencao" : "tarefa",
+    titulo: "Pagamento aguardando aprovação",
+    corpo: `${rotulo(pagamento)} — aprova: ${quemAprova(pagamento, usuarios.ler(), configAprovacao.ler(), HOJE)}.`,
+    destino: "/contas/pagamentos/aprovacoes",
+  });
   return null;
 }
 
@@ -70,10 +76,15 @@ export function devolver(id: string, motivo: string, usuario: Usuario): string |
   const pagamento = achar(id);
   if (!pagamento) return "Pagamento não encontrado.";
   if (!motivo.trim()) return "Diga o que precisa ser corrigido.";
-  const permitido = pagamento.status === "Em conferência" ? podeConferir(usuario, pagamento) : podeAprovar(usuario, pagamento, configAprovacao.ler(), HOJE);
+  const permitido = pagamento.status === "Em conferência" ? podeConferir(usuario, pagamento) : podeAprovar(usuario, pagamento, configAprovacao.ler(), HOJE, usuarios.ler());
   const erro = recusa(permitido);
   if (erro) return erro;
-  alterar(id, usuario.nome, `Devolvido: ${motivo.trim()}`, () => ({ status: "Devolvido", motivo: motivo.trim() }));
+  const naAprovacao = pagamento.status === "Aguardando aprovação";
+  alterar(id, usuario.nome, `Devolvido: ${motivo.trim()}`, () => ({
+    status: "Devolvido",
+    motivo: motivo.trim(),
+    ...(naAprovacao ? { decisao: { porId: usuario.id, por: usuario.nome, em: agora() } } : {}),
+  }));
   notificar({ tipo: "atencao", titulo: "Pagamento devolvido para correção", corpo: `${rotulo(pagamento)} — ${motivo.trim()}`, destino: "/contas/pagamentos" });
   return null;
 }
@@ -85,14 +96,15 @@ export function devolver(id: string, motivo: string, usuario: Usuario): string |
 export function aprovar(id: string, usuario: Usuario, dadosConfirmados = false): string | null {
   const pagamento = achar(id);
   if (!pagamento) return "Pagamento não encontrado.";
-  const erro = recusa(podeAprovar(usuario, pagamento, configAprovacao.ler(), HOJE));
+  const erro = recusa(podeAprovar(usuario, pagamento, configAprovacao.ler(), HOJE, usuarios.ler()));
   if (erro) return erro;
   const fornecedor = fornecedores.ler().find((f) => f.id === pagamento.fornecedorId);
   if (fornecedor && !fornecedor.dadosValidados) {
     if (!dadosConfirmados) return `Os dados bancários de ${fornecedor.nome} mudaram: confirme com o fornecedor por telefone antes de aprovar.`;
     validarFornecedor(fornecedor.id, usuario.nome);
   }
-  alterar(id, usuario.nome, "Aprovado.", () => ({ status: "Aprovado", aprovacao: { porId: usuario.id, por: usuario.nome, em: agora() } }));
+  const quem = { porId: usuario.id, por: usuario.nome, em: agora() };
+  alterar(id, usuario.nome, "Aprovado.", () => ({ status: "Aprovado", aprovacao: quem, decisao: quem }));
   notificar({ tipo: "sucesso", titulo: "Pagamento aprovado", corpo: `${rotulo(pagamento)} — pode ser pago.`, destino: "/contas/pagamentos" });
   return null;
 }
@@ -101,9 +113,9 @@ export function reprovar(id: string, motivo: string, usuario: Usuario): string |
   const pagamento = achar(id);
   if (!pagamento) return "Pagamento não encontrado.";
   if (!motivo.trim()) return "Diga por que o pagamento foi reprovado.";
-  const erro = recusa(podeAprovar(usuario, pagamento, configAprovacao.ler(), HOJE));
+  const erro = recusa(podeAprovar(usuario, pagamento, configAprovacao.ler(), HOJE, usuarios.ler()));
   if (erro) return erro;
-  alterar(id, usuario.nome, `Reprovado: ${motivo.trim()}`, () => ({ status: "Reprovado", motivo: motivo.trim() }));
+  alterar(id, usuario.nome, `Reprovado: ${motivo.trim()}`, () => ({ status: "Reprovado", motivo: motivo.trim(), decisao: { porId: usuario.id, por: usuario.nome, em: agora() } }));
   notificar({ tipo: "atencao", titulo: "Pagamento reprovado", corpo: `${rotulo(pagamento)} — ${motivo.trim()}`, destino: "/contas/pagamentos" });
   return null;
 }
@@ -193,7 +205,7 @@ export function solicitarDoLote(lote: Lote, usuario: Usuario): Pagamento | null 
     historico: [{ quando: agora(), autor: usuario.nome, texto: "Pedido gerado pela conferência de prestadores (recibos conferidos)." }],
   };
   pagamentos.atualizar((lista) => [...lista, novo]);
-  notificar({ tipo: "tarefa", titulo: "Pagamento aguardando sua aprovação", corpo: rotulo(novo), destino: "/contas/pagamentos/aprovacoes" });
+  notificar({ tipo: "tarefa", titulo: "Pagamento aguardando aprovação", corpo: `${rotulo(novo)} — aprova: ${quemAprova(novo, usuarios.ler(), configAprovacao.ler(), HOJE)}.`, destino: "/contas/pagamentos/aprovacoes" });
   return novo;
 }
 

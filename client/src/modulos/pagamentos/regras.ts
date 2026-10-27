@@ -1,4 +1,4 @@
-import { pode, veModulo, type Usuario } from "@/_core/identidade/permissoes";
+import { pode, veModulo, type Papel, type Usuario } from "@/_core/identidade/permissoes";
 import type { Contrapartida } from "@/modulos/conciliacao/tipos";
 import type { CategoriaPagamento, ConfigAprovacao, Fornecedor, Pagamento, StatusPagamento } from "./tipos";
 
@@ -31,12 +31,50 @@ export function podeConferir(usuario: Usuario | null, pagamento: Pagamento): Res
   return sim;
 }
 
-export function podeAprovar(usuario: Usuario | null, pagamento: Pagamento, config: ConfigAprovacao, hoje: string): Resposta {
+// ── Hierarquia da aprovação ─────────────────────────────────────────────────
+//
+// O pedido é aprovado um nível acima de quem pediu: operador ou leitor →
+// gestor (ou administrador); gestor → administrador; administrador → chefe da
+// administração (ou o substituto no período). O chefe vigente aprova qualquer
+// nível. Quem pediu ou conferiu nunca aprova. Espelha o banco (pode_aprovar_pagamento).
+
+export const NIVEL_DO_PAPEL: Record<Papel, number> = { viewer: 1, operador: 1, gestor: 2, admin: 3 };
+
+export type Alcada = "gestor" | "admin" | "chefe";
+
+export const ROTULO_ALCADA: Record<Alcada, string> = {
+  gestor: "um gestor ou administrador",
+  admin: "um administrador",
+  chefe: "o chefe da administração",
+};
+
+/** Quem precisa aprovar, pelo papel de quem pediu (pessoa desconhecida conta como operador). */
+export function alcadaDoPedido(pagamento: Pick<Pagamento, "solicitanteId">, pessoas: Usuario[]): Alcada {
+  const solicitante = pessoas.find((pessoa) => pessoa.id === pagamento.solicitanteId);
+  const nivel = solicitante ? NIVEL_DO_PAPEL[solicitante.papel] : 1;
+  return nivel <= 1 ? "gestor" : nivel === 2 ? "admin" : "chefe";
+}
+
+/** Texto de quem aprova este pedido, para as telas. */
+export function quemAprova(pagamento: Pick<Pagamento, "solicitanteId">, pessoas: Usuario[], config: ConfigAprovacao, hoje: string) {
+  const alcada = alcadaDoPedido(pagamento, pessoas);
+  if (alcada !== "chefe") return ROTULO_ALCADA[alcada];
+  const chefe = pessoas.find((pessoa) => pessoa.id === aprovadorVigente(config, hoje));
+  return chefe ? `${chefe.nome} (chefe da administração)` : ROTULO_ALCADA.chefe;
+}
+
+export function podeAprovar(usuario: Usuario | null, pagamento: Pagamento, config: ConfigAprovacao, hoje: string, pessoas: Usuario[]): Resposta {
   if (pagamento.status !== "Aguardando aprovação") return nao("Este pagamento não está aguardando aprovação.");
-  if (!usuario || usuario.id !== aprovadorVigente(config, hoje)) return nao("A aprovação é do chefe da administração (ou do substituto no período).");
-  if (usuario.id === pagamento.solicitanteId) return nao("Você pediu este pagamento: a aprovação fica com o substituto.");
-  if (usuario.id === pagamento.conferencia?.porId) return nao("Você conferiu este pagamento: a aprovação fica com o substituto.");
-  return sim;
+  if (!usuario) return nao("Entre para aprovar.");
+  const alcada = alcadaDoPedido(pagamento, pessoas);
+  if (usuario.id === pagamento.solicitanteId)
+    return nao(`Você pediu este pagamento: a aprovação fica com ${alcada === "chefe" ? "o substituto do chefe da administração (configure em Regras de aprovação)" : ROTULO_ALCADA[alcada]}.`);
+  if (usuario.id === pagamento.conferencia?.porId) return nao("Você conferiu este pagamento: a aprovação fica com outra pessoa.");
+  if (usuario.id === aprovadorVigente(config, hoje)) return sim;
+  const nivel = NIVEL_DO_PAPEL[usuario.papel];
+  if (alcada === "gestor" && nivel >= 2) return sim;
+  if (alcada === "admin" && nivel >= 3) return sim;
+  return nao(`A aprovação deste pedido é de ${ROTULO_ALCADA[alcada]}.`);
 }
 
 export function podePagar(usuario: Usuario | null, pagamento: Pagamento): Resposta {
@@ -56,11 +94,20 @@ export function podeCancelar(usuario: Usuario | null, pagamento: Pagamento) {
   return Boolean(usuario && aberto.includes(pagamento.status) && (usuario.id === pagamento.solicitanteId || ehFinanceiro(usuario)));
 }
 
-/** Quem não é financeiro nem aprovador vê só os próprios pedidos. */
-export function visiveisPara(usuario: Usuario | null, pagamentos: Pagamento[], config: ConfigAprovacao, hoje: string) {
+/**
+ * Financeiro e chefe da administração veem tudo. Os demais veem os próprios
+ * pedidos, os que aguardam a aprovação deles e os que eles já decidiram.
+ */
+export function visiveisPara(usuario: Usuario | null, pagamentos: Pagamento[], config: ConfigAprovacao, hoje: string, pessoas: Usuario[]) {
   if (!usuario) return [];
   if (ehFinanceiro(usuario) || usuario.id === aprovadorVigente(config, hoje) || usuario.id === config.aprovadorId) return pagamentos;
-  return pagamentos.filter((pagamento) => pagamento.solicitanteId === usuario.id);
+  return pagamentos.filter(
+    (pagamento) =>
+      pagamento.solicitanteId === usuario.id ||
+      pagamento.decisao?.porId === usuario.id ||
+      pagamento.aprovacao?.porId === usuario.id ||
+      podeAprovar(usuario, pagamento, config, hoje, pessoas).ok,
+  );
 }
 
 // ── Validação do pedido ────────────────────────────────────────────────────

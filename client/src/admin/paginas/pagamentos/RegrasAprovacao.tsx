@@ -31,10 +31,32 @@ export default function RegrasAprovacao() {
 
   return (
     <>
-      <Cabecalho rotulo="Contas a pagar" titulo="Regras de aprovação" descricao="Quem aprova os pagamentos e quem substitui nas ausências." />
+      <Cabecalho
+        rotulo="Contas a pagar"
+        titulo="Regras de aprovação"
+        descricao="O pedido é aprovado um nível acima de quem pediu. Quem pediu ou conferiu nunca aprova; quem aprovou não paga."
+      />
+      <section className="operations-surface espaco-abaixo">
+        <span className="eyebrow">Hierarquia</span>
+        <ul className="lista-alcadas espaco-acima-curto">
+          <li>
+            <strong>Pedido de operador ou leitor</strong>
+            <span>aprova um gestor ou administrador</span>
+          </li>
+          <li>
+            <strong>Pedido de gestor</strong>
+            <span>aprova um administrador</span>
+          </li>
+          <li>
+            <strong>Pedido de administrador</strong>
+            <span>aprova o chefe da administração (ou o substituto no período)</span>
+          </li>
+        </ul>
+        <p className="field-hint espaco-acima-curto">O chefe da administração aprova pedidos de qualquer nível. O nível de cada pessoa é o papel dela em Usuários e acessos.</p>
+      </section>
       <div className="grid-2">
         <section className="operations-surface">
-          <span className="eyebrow">Hoje, quem aprova</span>
+          <span className="eyebrow">Hoje, quem aprova os pedidos de administradores</span>
           <h3 className="espaco-acima-curto">{vigente?.nome ?? "—"}</h3>
           <p className="field-hint">
             {vigente?.id === config.aprovadorId ? "Chefe da administração." : `Substituindo ${nome(config.aprovadorId)} até ${formatarData(config.substitutoAte)}.`}

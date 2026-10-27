@@ -26,6 +26,10 @@ const fernanda = pessoa("usr-fernanda"); // admin, financeiro
 const ricardo = pessoa("usr-ricardo"); // gestor, financeiro, substituto
 const marcos = pessoa("usr-marcos"); // chefe da administração, aprovador
 const helena = pessoa("usr-helena"); // operadora, outra área
+const felipe = pessoa("usr-felipe"); // admin
+const caio = pessoa("usr-caio"); // leitor
+const bianca = pessoa("usr-bianca"); // operadora
+const pessoas = USUARIOS_DEMO;
 
 const pedido = (extra: Partial<Pedido> = {}): Pedido => ({
   empresa: "PNST", fornecedorId: null, favorecido: "Tribunal de Justiça de São Paulo", descricao: "Custas", categoria: "Custas processuais", valor: 500,
@@ -51,12 +55,24 @@ describe("segregação de funções", () => {
     expect(podeConferir(helena, em("Em conferência")).ok).toBe(false);
     expect(podeConferir(fernanda, em("Em conferência")).ok).toBe(true);
   });
-  it("só o aprovador vigente aprova, e nunca o que pediu ou conferiu", () => {
+  it("aprova um nível acima de quem pediu, e nunca quem pediu ou conferiu", () => {
     const conferido = { porId: "usr-fernanda", por: "Fernanda", em: "" };
-    expect(podeAprovar(marcos, em("Aguardando aprovação", { conferencia: conferido }), config, HOJE).ok).toBe(true);
-    expect(podeAprovar(ricardo, em("Aguardando aprovação", { conferencia: conferido }), config, HOJE).ok).toBe(false);
-    expect(podeAprovar(marcos, em("Aguardando aprovação", { solicitanteId: "usr-marcos", conferencia: conferido }), config, HOJE)).toMatchObject({ ok: false, motivo: expect.stringMatching(/substituto/) });
-    expect(podeAprovar(marcos, em("Aguardando aprovação", { conferencia: { porId: "usr-marcos", por: "Marcos", em: "" } }), config, HOJE).ok).toBe(false);
+    const aguardando = (solicitanteId: string, extra: Partial<Pagamento> = {}) => em("Aguardando aprovação", { solicitanteId, conferencia: conferido, ...extra });
+    // Operadora pediu → gestor ou administrador aprova; operador e leitor não.
+    expect(podeAprovar(ricardo, aguardando("usr-helena"), config, HOJE, pessoas).ok).toBe(true);
+    expect(podeAprovar(felipe, aguardando("usr-helena"), config, HOJE, pessoas).ok).toBe(true);
+    expect(podeAprovar(bianca, aguardando("usr-helena"), config, HOJE, pessoas)).toMatchObject({ ok: false, motivo: expect.stringMatching(/gestor ou administrador/) });
+    expect(podeAprovar(caio, aguardando("usr-helena"), config, HOJE, pessoas).ok).toBe(false);
+    // Gestor pediu → administrador aprova; outro gestor não (a não ser o chefe vigente).
+    expect(podeAprovar(felipe, aguardando("usr-ricardo"), config, HOJE, pessoas).ok).toBe(true);
+    expect(podeAprovar(marcos, aguardando("usr-ricardo"), config, HOJE, pessoas).ok).toBe(true);
+    // Administrador pediu → só o chefe da administração (ou o substituto no período).
+    expect(podeAprovar(felipe, aguardando("usr-fernanda", { conferencia: { porId: "usr-ricardo", por: "Ricardo", em: "" } }), config, HOJE, pessoas)).toMatchObject({ ok: false, motivo: expect.stringMatching(/chefe da administração/) });
+    expect(podeAprovar(marcos, aguardando("usr-fernanda", { conferencia: { porId: "usr-ricardo", por: "Ricardo", em: "" } }), config, HOJE, pessoas).ok).toBe(true);
+    // Quem pediu ou conferiu não aprova.
+    expect(podeAprovar(marcos, aguardando("usr-marcos"), config, HOJE, pessoas)).toMatchObject({ ok: false, motivo: expect.stringMatching(/Você pediu/) });
+    expect(podeAprovar(felipe, aguardando("usr-marcos"), config, HOJE, pessoas).ok).toBe(true);
+    expect(podeAprovar(ricardo, aguardando("usr-helena", { conferencia: { porId: "usr-ricardo", por: "Ricardo", em: "" } }), config, HOJE, pessoas).ok).toBe(false);
   });
   it("quem aprovou não paga", () => {
     const aprovado = em("Aprovado", { aprovacao: { porId: "usr-ricardo", por: "Ricardo", em: "" } });
@@ -66,8 +82,10 @@ describe("segregação de funções", () => {
   });
   it("outras áreas veem só os próprios pedidos", () => {
     const lista = [em("Em conferência"), em("Pago", { solicitanteId: "usr-fernanda" })];
-    expect(visiveisPara(helena, lista, config, HOJE)).toHaveLength(1);
-    expect(visiveisPara(marcos, lista, config, HOJE)).toHaveLength(2);
+    expect(visiveisPara(helena, lista, config, HOJE, pessoas)).toHaveLength(1);
+    expect(visiveisPara(marcos, lista, config, HOJE, pessoas)).toHaveLength(2);
+    // Leitor não vê pedido alheio, nem aguardando aprovação.
+    expect(visiveisPara(caio, [em("Aguardando aprovação", { conferencia: { porId: "usr-fernanda", por: "F", em: "" } })], config, HOJE, pessoas)).toHaveLength(0);
   });
 });
 
@@ -102,7 +120,8 @@ describe("fluxo completo pelas ações", () => {
     expect(novo.status).toBe("Em conferência");
     expect(conferir(novo.id, helena)).toMatch(/financeiro/);
     expect(conferir(novo.id, fernanda)).toBeNull();
-    expect(aprovar(novo.id, fernanda)).toMatch(/chefe da administração/);
+    expect(aprovar(novo.id, fernanda)).toMatch(/conferiu/);
+    expect(aprovar(novo.id, bianca)).toMatch(/gestor ou administrador/);
     expect(aprovar(novo.id, marcos)).toBeNull();
     expect(registrarPagamento(novo.id, { data: HOJE, contaId: "cb-itau-pnst", comprovante: null }, marcos)).toMatch(/financeiro|aprovou/);
     expect(registrarPagamento(novo.id, { data: HOJE, contaId: "cb-itau-pnst", comprovante: null }, ricardo)).toBeNull();

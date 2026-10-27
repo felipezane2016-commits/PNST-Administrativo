@@ -6,7 +6,7 @@ import Vazio from "@/admin/componentes/Vazio";
 import { formatBRL } from "@/lib/portal";
 import { aprovar } from "@/modulos/pagamentos/acoes";
 import { useDadosPagamentos } from "@/modulos/pagamentos/colecoes";
-import { aprovadorVigente, diasAte, podeAprovar } from "@/modulos/pagamentos/regras";
+import { diasAte, podeAprovar, quemAprova } from "@/modulos/pagamentos/regras";
 import { CheckCheck, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { LinkDocumento } from "./comum";
@@ -26,14 +26,14 @@ export default function Aprovacoes() {
   const [aviso, setAviso] = useState<string | null>(null);
   if (!usuario) return null;
 
-  const aprovadorId = aprovadorVigente(config, HOJE);
-  const aprovador = pessoas.find((p) => p.id === aprovadorId);
   const fila = pagamentos
     .filter((p) => p.status === "Aguardando aprovação")
     .sort((a, b) => Number(b.urgente) - Number(a.urgente) || a.vencimento.localeCompare(b.vencimento));
-  const ehAprovador = usuario.id === aprovadorId;
+  const pode = (p: (typeof fila)[number]) => podeAprovar(usuario, p, config, HOJE, pessoas);
+  // Aprova quem tem alçada em pelo menos um pedido da fila (um nível acima de quem pediu).
+  const ehAprovador = fila.some((p) => pode(p).ok);
   const dadosPendentes = (fornecedorId: string | null) => Boolean(fornecedores.find((f) => f.id === fornecedorId && !f.dadosValidados));
-  const aprovaveis = fila.filter((p) => podeAprovar(usuario, p, config, HOJE).ok && !dadosPendentes(p.fornecedorId));
+  const aprovaveis = fila.filter((p) => pode(p).ok && !dadosPendentes(p.fornecedorId));
   const total = fila.filter((p) => marcados.includes(p.id)).reduce((t, p) => t + p.valor, 0);
   const selecionado = pagamentos.find((p) => p.id === aberto) ?? null;
 
@@ -48,7 +48,7 @@ export default function Aprovacoes() {
       <Cabecalho
         rotulo="Contas a pagar"
         titulo="Aprovações"
-        descricao={`Pagamentos conferidos pelo financeiro que aguardam ${ehAprovador ? "a sua aprovação" : `a aprovação de ${aprovador?.nome ?? "chefe da administração"}`}.`}
+        descricao="Pagamentos conferidos pelo financeiro. Cada pedido é aprovado um nível acima de quem pediu: operador ou leitor → gestor; gestor → administrador; administrador → chefe da administração."
         acoes={
           ehAprovador && marcados.length ? (
             <button type="button" className="button-primary" onClick={aprovarMarcados}>
@@ -79,8 +79,8 @@ export default function Aprovacoes() {
             ) : null}
             <ul className="fila-aprovacao">
               {fila.map((p) => {
-                const pode = podeAprovar(usuario, p, config, HOJE);
-                const emLote = pode.ok && !dadosPendentes(p.fornecedorId);
+                const resposta = pode(p);
+                const emLote = resposta.ok && !dadosPendentes(p.fornecedorId);
                 const dias = diasAte(p.vencimento, HOJE);
                 return (
                   <li key={p.id} className={p.urgente ? "fila-item fila-item-urgente" : "fila-item"}>
@@ -91,7 +91,7 @@ export default function Aprovacoes() {
                         checked={marcados.includes(p.id)}
                         onChange={() => setMarcados((atual) => (atual.includes(p.id) ? atual.filter((id) => id !== p.id) : [...atual, p.id]))}
                         aria-label={`Marcar ${p.numero}`}
-                        title={emLote ? undefined : pode.ok ? "Fornecedor com dados bancários a validar: abra para confirmar." : pode.motivo}
+                        title={emLote ? undefined : resposta.ok ? "Fornecedor com dados bancários a validar: abra para confirmar." : resposta.motivo}
                       />
                     ) : null}
                     <div className="fila-item-copy">
@@ -107,7 +107,8 @@ export default function Aprovacoes() {
                         {p.caso ? ` · ${p.caso}` : ""} · {p.categoria} · pedido por {p.solicitante} · conferido por {p.conferencia?.por ?? "—"}
                       </span>
                       {dadosPendentes(p.fornecedorId) ? <span className="texto-vencido">Fornecedor trocou os dados bancários: confirme antes de aprovar.</span> : null}
-                      {!pode.ok && ehAprovador ? <span className="texto-vencido">{pode.motivo}</span> : null}
+                      <span>Aprova: {quemAprova(p, pessoas, config, HOJE)}</span>
+                      {!resposta.ok && ehAprovador ? <span className="texto-vencido">{resposta.motivo}</span> : null}
                       <div className="inline-row espaco-acima-curto">
                         {p.documentos.map((d, i) => (
                           <LinkDocumento key={i} anexo={d} />

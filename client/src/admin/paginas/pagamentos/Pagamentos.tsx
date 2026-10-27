@@ -29,7 +29,7 @@ export default function Pagamentos() {
 
   const financeiro = ehFinanceiro(usuario);
   const aprovador = pessoas.find((p) => p.id === aprovadorVigente(config, HOJE));
-  const visiveis = visiveisPara(usuario, pagamentos, config, HOJE);
+  const visiveis = visiveisPara(usuario, pagamentos, config, HOJE, pessoas);
   const termo = busca.trim().toLowerCase();
   const lista = visiveis
     .filter((p) => (filtro === "Todos" ? true : filtro === "Em aberto" ? ABERTOS.includes(p.status) : p.status === filtro))
@@ -46,7 +46,7 @@ export default function Pagamentos() {
       <Cabecalho
         rotulo="Contas a pagar"
         titulo="Pagamentos"
-        descricao={`Pedido → conferência do financeiro → aprovação de ${aprovador?.nome ?? "chefe da administração"} → pagamento com comprovante.`}
+        descricao="Pedido → conferência do financeiro → aprovação um nível acima de quem pediu → pagamento com comprovante."
         acoes={
           <button type="button" className="button-primary" onClick={() => setFormulario({ devolvidoId: null })}>
             <Plus size={15} strokeWidth={2.2} /> Solicitar pagamento
@@ -75,7 +75,9 @@ export default function Pagamentos() {
       </div>
 
       <section className="operations-surface">
-        {!financeiro && usuario.id !== aprovador?.id ? <p className="field-hint espaco-abaixo">Você vê os pagamentos que pediu.</p> : null}
+        {!financeiro && usuario.id !== aprovador?.id ? (
+          <p className="field-hint espaco-abaixo">Você vê os pagamentos que pediu e os que aguardam (ou já tiveram) a sua aprovação.</p>
+        ) : null}
         <div className="surface-toolbar">
           <label className="inline-search">
             <Search size={15} strokeWidth={1.9} />

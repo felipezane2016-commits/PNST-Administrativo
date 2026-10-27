@@ -59,6 +59,8 @@ export type Receipt = {
   amount: number;
   status: PrototypeReceiptStatus;
   attachmentName: string | null;
+  /** Arquivo guardado (Storage no modo real; navegador na demonstração). Recibos antigos só têm o nome. */
+  attachmentId?: string | null;
   /** Devolutiva do escritório — preenchida quando o recibo é rejeitado. */
   reviewNote: string | null;
   createdAt: string;
@@ -71,6 +73,8 @@ export type Closing = {
   prestadorId: string;
   competencia: string;
   documentName: string | null;
+  /** Arquivo do documento de faturamento, guardado como os anexos dos recibos. */
+  documentId?: string | null;
   submitted: boolean;
   submittedAt: string | null;
   /** null enquanto o prestador não envia; o escritório avança daí em diante. */
@@ -97,6 +101,7 @@ export type ReceiptDraft = {
   description: string;
   amount: string;
   attachmentName: string | null;
+  attachmentId: string | null;
 };
 
 export function formatBRL(value: number) {
@@ -263,8 +268,20 @@ export function filterReceipts(
 }
 
 /** Um recibo só pode ser editado pelo prestador enquanto não estiver aprovado. */
-export function canEditReceipt(receipt: Receipt) {
-  return receipt.status !== "Aprovado";
+/**
+ * Recibo ainda mexível: não aprovado e com o mês ainda aberto no escritório
+ * (lote conferido ou pago não muda mais — nem pelo prestador, nem pelo escritório).
+ */
+export function canEditReceipt(receipt: Receipt, closing?: Closing | null) {
+  return receipt.status !== "Aprovado" && !lotClosed(closing);
+}
+
+/** O prestador remove nas mesmas condições em que edita. */
+export const canRemoveReceipt = canEditReceipt;
+
+/** Lote conferido ou pago: os recibos dele ficam congelados. */
+export function lotClosed(closing?: Closing | null) {
+  return closing?.review === "Conferido" || closing?.review === "Pago";
 }
 
 /**

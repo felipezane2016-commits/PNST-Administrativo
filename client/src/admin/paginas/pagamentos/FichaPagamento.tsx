@@ -8,7 +8,7 @@ import { formatBRL } from "@/lib/portal";
 import { useDadosConciliacao } from "@/modulos/conciliacao/colecoes";
 import { aprovar, cancelar, conferir, devolver, registrarPagamento, reprovar } from "@/modulos/pagamentos/acoes";
 import { useDadosPagamentos } from "@/modulos/pagamentos/colecoes";
-import { aprovadorVigente, diasAte, podeAprovar, podeCancelar, podeConferir, podeCorrigir, podePagar } from "@/modulos/pagamentos/regras";
+import { diasAte, podeAprovar, podeCancelar, podeConferir, podeCorrigir, podePagar, quemAprova } from "@/modulos/pagamentos/regras";
 import type { AnexoRef, Pagamento } from "@/modulos/pagamentos/tipos";
 import { AlertTriangle, Ban, Check, CornerUpLeft, Pencil, ShieldCheck, Wallet, X } from "lucide-react";
 import { useState } from "react";
@@ -25,14 +25,13 @@ export default function FichaPagamento({ pagamento, usuario, aoFechar, aoCorrigi
   const { config, fornecedores } = useDadosPagamentos();
   const pessoas = useColecao(usuarios);
   const fornecedor = fornecedores.find((f) => f.id === pagamento.fornecedorId) ?? null;
-  const aprovador = pessoas.find((p) => p.id === aprovadorVigente(config, HOJE));
   const [mensagem, setMensagem] = useState<string | null>(null);
   const resultado = (erro: string | null) => setMensagem(erro);
   const dias = diasAte(pagamento.vencimento, HOJE);
   const encerrado = pagamento.status === "Pago" || pagamento.status === "Reprovado" || pagamento.status === "Cancelado";
 
   const conferivel = podeConferir(usuario, pagamento);
-  const aprovavel = podeAprovar(usuario, pagamento, config, HOJE);
+  const aprovavel = podeAprovar(usuario, pagamento, config, HOJE, pessoas);
   const pagavel = podePagar(usuario, pagamento);
 
   return (
@@ -92,8 +91,8 @@ export default function FichaPagamento({ pagamento, usuario, aoFechar, aoCorrigi
               <AprovarPagamento pagamento={pagamento} usuario={usuario} dadosPendentes={Boolean(fornecedor && !fornecedor.dadosValidados)} aoResultado={resultado} />
             ) : (
               <p className="field-hint">
-                Aguardando a aprovação de {aprovador?.nome ?? "chefe da administração"}.{" "}
-                {usuario.id === aprovador?.id ? aprovavel.motivo : ""}
+                Aguardando a aprovação de {quemAprova(pagamento, pessoas, config, HOJE)}.{" "}
+                {!aprovavel.ok && aprovavel.motivo.startsWith("Você") ? aprovavel.motivo : ""}
               </p>
             )
           ) : null}

@@ -1,16 +1,30 @@
+import { pode } from "@/_core/identidade/permissoes";
+import { useUsuarioAtual } from "@/_core/identidade/sessao";
 import { formatarData } from "@/_core/tempo";
 import Cabecalho from "@/admin/componentes/Cabecalho";
+import Gaveta from "@/admin/componentes/Gaveta";
+import ReceiptModal from "@/components/ReceiptModal";
+import { atualizarRecibo, excluirRecibo } from "@/modulos/prestadores/acoes";
+import { AcoesRecibo, bloqueioDoRecibo, ConfirmarExclusaoRecibo, DetalhesRecibo } from "./ReciboDetalhe";
 import Vazio from "@/admin/componentes/Vazio";
 import StatusPill from "@/components/StatusPill";
-import { formatBRL, formatMonth, listCompetencias, RECEIPT_STATUSES, type PrototypeReceiptStatus } from "@/lib/portal";
+import { formatBRL, formatMonth, listCompetencias, RECEIPT_STATUSES, type PrototypeReceiptStatus, type Receipt } from "@/lib/portal";
 import { useDadosPrestadores } from "@/modulos/prestadores/usarDados";
-import { Search, SearchX } from "lucide-react";
+import { Paperclip, Search, SearchX } from "lucide-react";
 import { useState } from "react";
 
 type FiltroStatus = PrototypeReceiptStatus | "Todos";
 
 export default function Historico() {
-  const { prestadores, recibos } = useDadosPrestadores();
+  const { prestadores, recibos, fechamentos } = useDadosPrestadores();
+  const usuario = useUsuarioAtual();
+  const podeEditar = pode(usuario, "registros.editar");
+  const podeExcluir = pode(usuario, "registros.excluir");
+  const [abertoId, setAbertoId] = useState<string | null>(null);
+  const [editando, setEditando] = useState<Receipt | null>(null);
+  const [removendo, setRemovendo] = useState<Receipt | null>(null);
+  const aberto = recibos.find((recibo) => recibo.id === abertoId) ?? null;
+  const fechamentoDe = (recibo: Receipt) => fechamentos.find((item) => item.prestadorId === recibo.prestadorId && item.competencia === recibo.competencia) ?? null;
   const [busca, setBusca] = useState("");
   const [status, setStatus] = useState<FiltroStatus>("Todos");
   const [prestadorId, setPrestadorId] = useState("todos");
@@ -91,15 +105,18 @@ export default function Historico() {
                     <th>Prestador</th>
                     <th>Serviço</th>
                     <th>Data</th>
+                    <th>Anexo</th>
                     <th>Valor</th>
                     <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {visiveis.map((recibo) => (
-                    <tr key={recibo.id}>
+                    <tr key={recibo.id} className="linha-clicavel" onClick={() => setAbertoId(recibo.id)}>
                       <td>
-                        <span className="cell-code">{recibo.id}</span>
+                        <button type="button" className="link-linha cell-code" onClick={() => setAbertoId(recibo.id)}>
+                          {recibo.id}
+                        </button>
                       </td>
                       <td>{nomeDe.get(recibo.prestadorId) ?? "—"}</td>
                       <td className="cell-main">
@@ -107,6 +124,7 @@ export default function Historico() {
                         <span>{recibo.category}</span>
                       </td>
                       <td>{formatarData(recibo.serviceDate)}</td>
+                      <td>{recibo.attachmentName ? <Paperclip size={14} strokeWidth={1.9} aria-label={`Anexo: ${recibo.attachmentName}`} /> : "—"}</td>
                       <td className="money">{formatBRL(recibo.amount)}</td>
                       <td>
                         <StatusPill status={recibo.status} />
@@ -123,6 +141,62 @@ export default function Historico() {
           </>
         )}
       </section>
+
+      {aberto && !editando && !removendo ? (
+        <Gaveta
+          rotulo={`Recibo ${aberto.id}`}
+          titulo={aberto.client || aberto.id}
+          subtitulo={
+            <>
+              {nomeDe.get(aberto.prestadorId) ?? "—"} · {formatMonth(aberto.competencia)} · <StatusPill status={aberto.status} />
+            </>
+          }
+          aoFechar={() => setAbertoId(null)}
+          rodape={
+            podeEditar || podeExcluir ? (
+              <>
+                <span />
+                <AcoesRecibo
+                  recibo={aberto}
+                  podeEditar={podeEditar}
+                  podeExcluir={podeExcluir}
+                  bloqueio={bloqueioDoRecibo(aberto, fechamentoDe(aberto))}
+                  aoEditar={setEditando}
+                  aoExcluir={setRemovendo}
+                />
+              </>
+            ) : null
+          }
+        >
+          {aberto.reviewNote ? <p className="cell-note espaco-abaixo">Devolvido: {aberto.reviewNote}</p> : null}
+          <DetalhesRecibo recibo={aberto} />
+        </Gaveta>
+      ) : null}
+      {editando ? (
+        <ReceiptModal
+          receipt={editando}
+          competencia={editando.competencia}
+          prestadorId={editando.prestadorId}
+          descricao="Correção pelo escritório: o prestador vê a alteração no portal."
+          onClose={() => setEditando(null)}
+          onSave={(draft) => {
+            atualizarRecibo(editando.id, draft);
+            setEditando(null);
+          }}
+        />
+      ) : null}
+      {removendo ? (
+        <ConfirmarExclusaoRecibo
+          recibo={removendo}
+          nomePrestador={nomeDe.get(removendo.prestadorId) ?? "Prestador"}
+          aoFechar={() => setRemovendo(null)}
+          aoConfirmar={() => {
+            excluirRecibo(removendo.id);
+            setRemovendo(null);
+            setAbertoId(null);
+          }}
+        />
+      ) : null}
     </>
   );
 }

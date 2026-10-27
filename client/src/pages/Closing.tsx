@@ -1,3 +1,4 @@
+import { abrirAnexo, guardarAnexo, pastaDoPrestador } from "@/_core/armazenamento/anexos";
 import PortalShell from "@/components/PortalShell";
 import StatusPill from "@/components/StatusPill";
 import { usePortal } from "@/contexts/PortalContext";
@@ -32,6 +33,7 @@ export default function Closing() {
     closingFor,
     attachClosingDocument,
     submitClosing,
+    prestadorId,
   } = usePortal();
   const competencias = listCompetencias(receipts);
   const [competencia, setCompetencia] = useState(
@@ -61,8 +63,24 @@ export default function Closing() {
     closing.submitted
   );
 
-  function handleUpload(event: ChangeEvent<HTMLInputElement>) {
-    attachClosingDocument(competencia, event.target.files?.[0]?.name ?? null);
+  const [enviando, setEnviando] = useState(false);
+  const [erroArquivo, setErroArquivo] = useState<string | null>(null);
+
+  async function handleUpload(event: ChangeEvent<HTMLInputElement>) {
+    const arquivo = event.target.files?.[0];
+    event.target.value = "";
+    if (!arquivo) return;
+    if (arquivo.size > 20 * 1024 * 1024) return setErroArquivo("Arquivo maior que 20 MB. Envie uma versão menor.");
+    setErroArquivo(null);
+    setEnviando(true);
+    try {
+      const anexo = await guardarAnexo(arquivo, pastaDoPrestador(prestadorId, competencia));
+      attachClosingDocument(competencia, anexo.nome, anexo.id);
+    } catch {
+      setErroArquivo("Não foi possível enviar o arquivo. Verifique a conexão e tente de novo.");
+    } finally {
+      setEnviando(false);
+    }
   }
 
   return (
@@ -199,8 +217,9 @@ export default function Closing() {
           >
             <input
               type="file"
+              accept="application/pdf,image/*"
               onChange={handleUpload}
-              disabled={closing.submitted}
+              disabled={closing.submitted || enviando}
               aria-label="Documento de faturamento"
             />
             {hasDocument ? (
@@ -208,7 +227,7 @@ export default function Closing() {
             ) : (
               <Upload size={19} strokeWidth={1.9} />
             )}
-            <strong>{closing.documentName ?? "Selecionar arquivo"}</strong>
+            <strong>{enviando ? "Enviando arquivo…" : (closing.documentName ?? "Selecionar arquivo")}</strong>
             <span>
               {hasDocument
                 ? closing.submitted
@@ -217,6 +236,16 @@ export default function Closing() {
                 : "PDF ou imagem até 10 MB"}
             </span>
           </label>
+          {closing.documentId ? (
+            <button type="button" className="text-button" onClick={() => void abrirAnexo(closing.documentId!, closing.documentName ?? "documento")}>
+              <FileText size={14} strokeWidth={2} /> Ver documento anexado
+            </button>
+          ) : null}
+          {erroArquivo ? (
+            <p className="field-error" role="alert">
+              {erroArquivo}
+            </p>
+          ) : null}
           <p className="field-hint">
             O valor do documento deve bater com {formatBRL(total)}.
           </p>

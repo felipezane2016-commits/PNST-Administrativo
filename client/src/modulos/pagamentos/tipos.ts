@@ -73,6 +73,8 @@ export type Pagamento = {
   solicitadoEm: string;
   conferencia: { porId: string; por: string; em: string } | null;
   aprovacao: { porId: string; por: string; em: string } | null;
+  /** Quem decidiu na etapa de aprovação (aprovou, reprovou ou devolveu). */
+  decisao?: { porId: string; por: string; em: string } | null;
   pagamento: { porId: string; por: string; data: string; contaId: string | null; comprovante: AnexoRef | null } | null;
   /** Motivo da última devolução, reprovação ou cancelamento. */
   motivo: string;
