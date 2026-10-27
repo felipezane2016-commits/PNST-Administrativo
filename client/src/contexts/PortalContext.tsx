@@ -154,8 +154,9 @@ export function PortalProvider({ children }: { children: ReactNode }) {
                 ...recibo,
                 ...fields,
                 // Reeditar um recibo devolvido volta à fila: limpa a devolutiva
-                // e reabre como rascunho para novo envio.
-                status: recibo.status === "Rejeitado" ? "Rascunho" : recibo.status,
+                // e reabre como rascunho para novo envio. Um aprovado que muda
+                // volta para a conferência.
+                status: recibo.status === "Rejeitado" ? "Rascunho" : recibo.status === "Aprovado" ? "Enviado" : recibo.status,
                 reviewNote: recibo.status === "Rejeitado" ? null : recibo.reviewNote,
               }
             : recibo,

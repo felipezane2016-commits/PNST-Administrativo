@@ -9,7 +9,7 @@ import StatusPill from "@/components/StatusPill";
 import { formatBRL, formatMonth, type Receipt } from "@/lib/portal";
 import ReceiptModal from "@/components/ReceiptModal";
 import { aprovarRecibo, atualizarRecibo, devolverRecibo, excluirRecibo, finalizarConferencia } from "@/modulos/prestadores/acoes";
-import { AcoesRecibo, bloqueioDoRecibo, BotaoAnexo, ConfirmarExclusaoRecibo, DetalhesRecibo } from "./ReciboDetalhe";
+import { AcoesRecibo, bloqueioDoRecibo, BotaoAnexo, BotaoLotePdf, BotaoReciboPdf, ConfirmarExclusaoRecibo, DetalhesRecibo } from "./ReciboDetalhe";
 import { solicitarDoLote } from "@/modulos/pagamentos/acoes";
 import { pagamentos } from "@/modulos/pagamentos/colecoes";
 import { useColecao } from "@/_core/armazenamento/colecao";
@@ -232,7 +232,13 @@ function GavetaLote({
         <div className="data-list-cheio">
           <dt>Documento de faturamento</dt>
           <dd>
-            <BotaoAnexo id={lote.fechamento?.documentId ?? null} nome={lote.fechamento?.documentName ?? null} rotulo="Abrir documento" />
+            <BotaoAnexo id={lote.fechamento?.documentId ?? null} nome={lote.fechamento?.documentName ?? null} rotulo="Documento em PDF" />
+          </dd>
+        </div>
+        <div className="data-list-cheio">
+          <dt>Para conferir ou arquivar</dt>
+          <dd>
+            <BotaoLotePdf recibos={lote.recibos} nomePrestador={lote.prestador.nome} competencia={lote.competencia} fechamento={lote.fechamento ?? null} />
           </dd>
         </div>
       </dl>
@@ -248,6 +254,7 @@ function GavetaLote({
           <ReciboConferido
             key={recibo.id}
             recibo={recibo}
+            nomePrestador={lote.prestador.nome}
             podeAgir={podeAgir}
             podeExcluir={podeExcluir}
             bloqueio={bloqueioDoRecibo(recibo, lote.fechamento)}
@@ -262,6 +269,7 @@ function GavetaLote({
 
 function ReciboConferido({
   recibo,
+  nomePrestador,
   podeAgir,
   podeExcluir,
   bloqueio,
@@ -269,6 +277,7 @@ function ReciboConferido({
   aoExcluir,
 }: {
   recibo: Receipt;
+  nomePrestador: string;
   podeAgir: boolean;
   podeExcluir: boolean;
   bloqueio: string | null;
@@ -305,6 +314,7 @@ function ReciboConferido({
         </span>
         <p className="ged-line-descricao">{recibo.description}</p>
         <div className="inline-row espaco-acima-curto">
+          <BotaoReciboPdf recibo={recibo} nomePrestador={nomePrestador} />
           <BotaoAnexo id={recibo.attachmentId ?? null} nome={recibo.attachmentName} />
         </div>
         {recibo.reviewNote ? (

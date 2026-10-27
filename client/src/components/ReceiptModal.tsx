@@ -358,7 +358,7 @@ export default function ReceiptModal({
                 className="text-button"
                 onClick={() => void abrirAnexo(draft.attachmentId!, draft.attachmentName ?? "anexo")}
               >
-                <Paperclip size={14} strokeWidth={2} /> Ver arquivo anexado
+                <Paperclip size={14} strokeWidth={2} /> Ver arquivo anexado (PDF)
               </button>
             ) : draft.attachmentName ? (
               <span className="field-hint">Este recibo é anterior ao envio de arquivos: anexe o comprovante de novo para o escritório conseguir abrir.</span>

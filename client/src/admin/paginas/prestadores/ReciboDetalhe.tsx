@@ -1,13 +1,14 @@
 import { abrirAnexo } from "@/_core/armazenamento/anexos";
 import { formatarData, formatarDataHora } from "@/_core/tempo";
 import Painel from "@/admin/componentes/Painel";
-import { formatBRL, lotClosed, type Closing, type Receipt } from "@/lib/portal";
-import { Paperclip, Pencil, Trash2 } from "lucide-react";
+import { formatBRL, officeCanChangeReceipt, type Closing, type Receipt } from "@/lib/portal";
+import { abrirLoteEmPdf, abrirReciboEmPdf } from "@/lib/reciboPdf";
+import { FileDown, Paperclip, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 /**
  * O recibo como o prestador lançou: todos os campos e o comprovante anexado,
- * que abre numa aba nova. Usado na conferência e no histórico.
+ * que abre em PDF numa aba nova. Usado na conferência e no histórico.
  */
 export function DetalhesRecibo({ recibo }: { recibo: Receipt }) {
   return (
@@ -54,8 +55,41 @@ export function DetalhesRecibo({ recibo }: { recibo: Receipt }) {
   );
 }
 
+/** O recibo inteiro (dados + comprovante) num PDF. */
+export function BotaoReciboPdf({ recibo, nomePrestador, rotulo = "Recibo em PDF" }: { recibo: Receipt; nomePrestador: string; rotulo?: string }) {
+  return <BotaoPdf rotulo={rotulo} descricao={`${rotulo}: ${recibo.id}`} gerar={() => abrirReciboEmPdf(recibo, nomePrestador)} />;
+}
+
+/** O mês do prestador num PDF só: resumo, recibos com comprovantes e o documento de faturamento. */
+export function BotaoLotePdf({ recibos, nomePrestador, competencia, fechamento }: { recibos: Receipt[]; nomePrestador: string; competencia: string; fechamento: Closing | null }) {
+  return <BotaoPdf rotulo="Mês completo em PDF" descricao="Mês completo em PDF" gerar={() => abrirLoteEmPdf(recibos, nomePrestador, competencia, fechamento)} />;
+}
+
+function BotaoPdf({ rotulo, descricao, gerar }: { rotulo: string; descricao: string; gerar: () => Promise<boolean> }) {
+  const [gerando, setGerando] = useState(false);
+  const [falhou, setFalhou] = useState(false);
+  return (
+    <span className="inline-row">
+      <button
+        type="button"
+        className="button-secondary button-compacto"
+        disabled={gerando}
+        aria-label={descricao}
+        onClick={async () => {
+          setGerando(true);
+          setFalhou(!(await gerar()));
+          setGerando(false);
+        }}
+      >
+        <FileDown size={13} strokeWidth={2} /> {gerando ? "Gerando PDF..." : rotulo}
+      </button>
+      {falhou ? <span className="field-error">Não foi possível gerar o PDF.</span> : null}
+    </span>
+  );
+}
+
 /** Abre o arquivo; recibos antigos (só com o nome) dizem que o arquivo não foi guardado. */
-export function BotaoAnexo({ id, nome, rotulo = "Abrir comprovante" }: { id: string | null; nome: string | null; rotulo?: string }) {
+export function BotaoAnexo({ id, nome, rotulo = "Comprovante em PDF" }: { id: string | null; nome: string | null; rotulo?: string }) {
   const [falhou, setFalhou] = useState(false);
   if (!nome && !id) return <span className="texto-apoio">Nenhum arquivo anexado</span>;
   if (!id)
@@ -80,11 +114,9 @@ export function BotaoAnexo({ id, nome, rotulo = "Abrir comprovante" }: { id: str
   );
 }
 
-/** Por que o recibo não pode mais mudar (ou null quando pode). */
-export function bloqueioDoRecibo(recibo: Receipt, fechamento: Closing | null | undefined) {
-  if (recibo.status === "Aprovado") return "Recibo aprovado: não muda mais.";
-  if (lotClosed(fechamento)) return `Mês já ${fechamento?.review === "Pago" ? "pago" : "conferido"}: não muda mais.`;
-  return null;
+/** Por que o escritório não pode mais mudar o recibo (ou null quando pode). */
+export function bloqueioDoRecibo(_recibo: Receipt, fechamento: Closing | null | undefined) {
+  return officeCanChangeReceipt(fechamento) ? null : "Mês já pago: o recibo não muda mais.";
 }
 
 /** Editar / excluir, com o motivo quando não pode. */

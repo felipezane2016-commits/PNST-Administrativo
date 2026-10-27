@@ -238,7 +238,7 @@ export default function Closing() {
           </label>
           {closing.documentId ? (
             <button type="button" className="text-button" onClick={() => void abrirAnexo(closing.documentId!, closing.documentName ?? "documento")}>
-              <FileText size={14} strokeWidth={2} /> Ver documento anexado
+              <FileText size={14} strokeWidth={2} /> Ver documento anexado (PDF)
             </button>
           ) : null}
           {erroArquivo ? (

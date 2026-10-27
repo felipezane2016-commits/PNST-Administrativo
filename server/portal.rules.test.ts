@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   canEditReceipt,
+  officeCanChangeReceipt,
+  type Closing,
   canSubmitClosing,
   closingSteps,
   closingTotal,
@@ -135,10 +137,13 @@ describe("Totais do fechamento", () => {
 });
 
 describe("Regras de envio", () => {
-  it("bloqueia a edição de recibos já aprovados", () => {
-    expect(canEditReceipt(receipt("REC-0001", "Aprovado", 10))).toBe(false);
-    expect(canEditReceipt(receipt("REC-0002", "Rejeitado", 10))).toBe(true);
-    expect(canEditReceipt(receipt("REC-0003", "Rascunho", 10))).toBe(true);
+  it("o prestador edita até o mês ser conferido; o escritório, até ser pago", () => {
+    const fechamento = (review: Closing["review"]): Closing => ({ prestadorId: "p", competencia: "2026-10", documentName: null, submitted: true, submittedAt: null, review });
+    expect(canEditReceipt(receipt("REC-0001", "Aprovado", 10))).toBe(true);
+    expect(canEditReceipt(receipt("REC-0002", "Rejeitado", 10), fechamento("Aguardando conferência"))).toBe(true);
+    expect(canEditReceipt(receipt("REC-0003", "Rascunho", 10), fechamento("Conferido"))).toBe(false);
+    expect(officeCanChangeReceipt(fechamento("Conferido"))).toBe(true);
+    expect(officeCanChangeReceipt(fechamento("Pago"))).toBe(false);
   });
 
   it("exige documento e ao menos um recibo aproveitável para enviar o fechamento", () => {

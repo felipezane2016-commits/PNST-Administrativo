@@ -82,26 +82,58 @@ export async function apagarAnexo(id: string) {
 export const pastaDoPrestador = (prestadorId: string, competencia: string) => `prestadores/${prestadorId}/${competencia}`;
 
 /**
- * Abre o anexo numa aba nova (PDF e imagem o navegador mostra; o resto baixa).
+ * Abre o anexo em PDF numa aba nova (imagem vira PDF; PDF abre como está).
  * A aba é aberta antes de buscar o arquivo: aberta depois, o navegador bloqueia.
+ * Formato que não vira PDF é baixado como está.
  */
 export async function abrirAnexo(id: string, nome: string): Promise<boolean> {
-  const aba = window.open("", "_blank");
+  const aba = abrirAbaDeEspera();
   const anexo = await lerAnexo(id);
   if (!anexo) {
     aba?.close();
     return false;
   }
-  const visivel = /^(application\/pdf|image\/)/.test(anexo.tipo || anexo.blob.type);
-  if (aba && visivel) {
-    const url = URL.createObjectURL(anexo.blob);
-    aba.location.href = url;
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
-  } else {
-    aba?.close();
-    baixarBlob(anexo.blob, nome);
+  const { anexoEmPdf } = await import("./pdf");
+  const pdf = await anexoEmPdf({ ...anexo, nome }).catch(() => null);
+  if (pdf) {
+    mostrarPdf(aba, pdf, nome.replace(/\.[^.]+$/, "") + ".pdf");
+    return true;
   }
+  aba?.close();
+  baixarBlob(anexo.blob, nome);
   return true;
+}
+
+/**
+ * Abre o PDF numa aba que já foi aberta no clique (aberta depois do await, o
+ * navegador bloqueia). Sem aba (bloqueador de pop-up), baixa o arquivo.
+ */
+export function mostrarPdf(aba: Window | null, blob: Blob, nome: string) {
+  const url = URL.createObjectURL(blob);
+  if (aba && !aba.closed) {
+    aba.location.href = url;
+    setTimeout(() => URL.revokeObjectURL(url), 120_000);
+    return;
+  }
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = nome.toLowerCase().endsWith(".pdf") ? nome : `${nome}.pdf`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Aba de espera, aberta no clique, enquanto o PDF é montado. */
+export function abrirAbaDeEspera() {
+  const aba = window.open("", "_blank");
+  if (aba) {
+    aba.document.title = "Gerando PDF...";
+    aba.document.body.style.font = "14px system-ui, sans-serif";
+    aba.document.body.style.padding = "24px";
+    aba.document.body.textContent = "Gerando o PDF...";
+  }
+  return aba;
 }
 
 export function baixarBlob(blob: Blob, nome: string) {

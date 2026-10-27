@@ -3,10 +3,12 @@ import ReceiptModal from "@/components/ReceiptModal";
 import StatusPill from "@/components/StatusPill";
 import { usePortal } from "@/contexts/PortalContext";
 import { abrirAnexo } from "@/_core/armazenamento/anexos";
+import { abrirReciboEmPdf } from "@/lib/reciboPdf";
 import Painel from "@/admin/componentes/Painel";
 import {
   canEditReceipt,
   canRemoveReceipt,
+  receiptLockReason,
   filterReceipts,
   formatBRL,
   formatDate,
@@ -19,6 +21,7 @@ import {
 } from "@/lib/portal";
 import {
   AlertCircle,
+  FileDown,
   Paperclip,
   Plus,
   Search,
@@ -44,6 +47,7 @@ export default function Receipts() {
     removeReceipt,
     closingFor,
     prestadorId,
+    provider,
   } = usePortal();
   const [removendo, setRemovendo] = useState<Receipt | null>(null);
   const [search, setSearch] = useState("");
@@ -231,7 +235,7 @@ export default function Receipts() {
                             type="button"
                             className="icon-button icon-button-pequeno"
                             aria-label={`Abrir anexo de ${receipt.id}: ${receipt.attachmentName ?? ""}`}
-                            title={receipt.attachmentName ?? "Abrir anexo"}
+                            title={`Comprovante em PDF: ${receipt.attachmentName ?? ""}`}
                             onClick={() => void abrirAnexo(receipt.attachmentId!, receipt.attachmentName ?? receipt.id)}
                           >
                             <Paperclip size={14} strokeWidth={1.9} />
@@ -252,6 +256,15 @@ export default function Receipts() {
                       </td>
                       <td>
                         <div className="cell-actions">
+                          <button
+                            type="button"
+                            className="icon-button"
+                            aria-label={`Abrir ${receipt.id} em PDF`}
+                            title="Abrir recibo em PDF (com o comprovante)"
+                            onClick={() => void abrirReciboEmPdf(receipt, provider.name)}
+                          >
+                            <FileDown size={15} strokeWidth={1.9} />
+                          </button>
                           {canEditReceipt(receipt, closingFor(receipt.competencia)) ? (
                             <button
                               type="button"
@@ -284,6 +297,9 @@ export default function Receipts() {
                               <Trash2 size={15} strokeWidth={1.9} />
                             </button>
                           ) : null}
+                          {receiptLockReason(closingFor(receipt.competencia)) ? (
+                            <span className="texto-apoio">{receiptLockReason(closingFor(receipt.competencia))}</span>
+                          ) : null}
                         </div>
                       </td>
                     </tr>
@@ -295,7 +311,7 @@ export default function Receipts() {
               <span>
                 {visible.length} de {receipts.length} recibo(s)
               </span>
-              <span>Recibos aprovados, ou de um mês já conferido pelo escritório, não podem mais ser editados nem excluídos</span>
+              <span>Você edita e exclui recibos até o escritório finalizar a conferência do mês; editar um recibo aprovado devolve ele para a conferência</span>
             </div>
           </>
         )}

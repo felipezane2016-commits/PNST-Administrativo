@@ -267,17 +267,28 @@ export function filterReceipts(
   });
 }
 
-/** Um recibo só pode ser editado pelo prestador enquanto não estiver aprovado. */
 /**
- * Recibo ainda mexível: não aprovado e com o mês ainda aberto no escritório
- * (lote conferido ou pago não muda mais — nem pelo prestador, nem pelo escritório).
+ * O prestador mexe nos recibos do mês até o escritório finalizar a conferência.
+ * Editar um recibo já aprovado devolve ele para a conferência.
  */
-export function canEditReceipt(receipt: Receipt, closing?: Closing | null) {
-  return receipt.status !== "Aprovado" && !lotClosed(closing);
+export function canEditReceipt(_receipt: Receipt, closing?: Closing | null) {
+  return !lotClosed(closing);
 }
 
 /** O prestador remove nas mesmas condições em que edita. */
 export const canRemoveReceipt = canEditReceipt;
+
+/** Por que o prestador não pode mais mexer no recibo (ou null quando pode). */
+export function receiptLockReason(closing?: Closing | null) {
+  if (closing?.review === "Pago") return "Mês já pago pelo escritório";
+  if (closing?.review === "Conferido") return "Mês já conferido: peça a correção ao escritório";
+  return null;
+}
+
+/** O escritório corrige ou exclui qualquer recibo até o mês ser pago. */
+export function officeCanChangeReceipt(closing?: Closing | null) {
+  return closing?.review !== "Pago";
+}
 
 /** Lote conferido ou pago: os recibos dele ficam congelados. */
 export function lotClosed(closing?: Closing | null) {

@@ -5,7 +5,7 @@ import Cabecalho from "@/admin/componentes/Cabecalho";
 import Gaveta from "@/admin/componentes/Gaveta";
 import ReceiptModal from "@/components/ReceiptModal";
 import { atualizarRecibo, excluirRecibo } from "@/modulos/prestadores/acoes";
-import { AcoesRecibo, bloqueioDoRecibo, ConfirmarExclusaoRecibo, DetalhesRecibo } from "./ReciboDetalhe";
+import { AcoesRecibo, bloqueioDoRecibo, BotaoReciboPdf, ConfirmarExclusaoRecibo, DetalhesRecibo } from "./ReciboDetalhe";
 import Vazio from "@/admin/componentes/Vazio";
 import StatusPill from "@/components/StatusPill";
 import { formatBRL, formatMonth, listCompetencias, RECEIPT_STATUSES, type PrototypeReceiptStatus, type Receipt } from "@/lib/portal";
@@ -153,9 +153,9 @@ export default function Historico() {
           }
           aoFechar={() => setAbertoId(null)}
           rodape={
-            podeEditar || podeExcluir ? (
-              <>
-                <span />
+            <>
+              <BotaoReciboPdf recibo={aberto} nomePrestador={nomeDe.get(aberto.prestadorId) ?? "Prestador"} />
+              {podeEditar || podeExcluir ? (
                 <AcoesRecibo
                   recibo={aberto}
                   podeEditar={podeEditar}
@@ -164,8 +164,8 @@ export default function Historico() {
                   aoEditar={setEditando}
                   aoExcluir={setRemovendo}
                 />
-              </>
-            ) : null
+              ) : null}
+            </>
           }
         >
           {aberto.reviewNote ? <p className="cell-note espaco-abaixo">Devolvido: {aberto.reviewNote}</p> : null}
