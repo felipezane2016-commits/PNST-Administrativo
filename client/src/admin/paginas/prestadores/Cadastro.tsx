@@ -1,5 +1,6 @@
 import { iniciais, pode } from "@/_core/identidade/permissoes";
-import { useUsuarioAtual } from "@/_core/identidade/sessao";
+import { usuarios, useUsuarioAtual } from "@/_core/identidade/sessao";
+import { useColecao } from "@/_core/armazenamento/colecao";
 import { MODO_REAL } from "@/_core/supabase/modo";
 import { formatarData, formatarDataHora, gerarId, HOJE } from "@/_core/tempo";
 import Cabecalho from "@/admin/componentes/Cabecalho";
@@ -45,22 +46,28 @@ function useContasDoPortal(ehAdmin: boolean) {
   return contas;
 }
 
-type SituacaoAcesso = "Desativado" | "Sem e-mail" | "Sem convite" | "Convite enviado" | "Com acesso" | "Ativo";
+type SituacaoAcesso = "Desativado" | "Sem e-mail" | "E-mail da equipe" | "Sem convite" | "Convite enviado" | "Com acesso" | "Ativo";
 
 const TOM_ACESSO: Record<SituacaoAcesso, Tom> = {
   Desativado: "neutral",
   "Sem e-mail": "red",
+  "E-mail da equipe": "red",
   "Sem convite": "amber",
   "Convite enviado": "blue",
   "Com acesso": "green",
   Ativo: "green",
 };
 
-function situacaoDoAcesso(prestador: Prestador, conta: ContaPortal | null | undefined): SituacaoAcesso {
+/**
+ * Cada acesso ao sistema tem um e-mail só: o login de alguém da equipe não
+ * pode virar também login do portal (o Supabase recusa o convite).
+ */
+function situacaoDoAcesso(prestador: Prestador, conta: ContaPortal | null | undefined, donoDoEmail: string | null): SituacaoAcesso {
   if (!prestador.portalAtivo) return "Desativado";
   if (!MODO_REAL) return "Ativo";
   if (!prestador.email) return "Sem e-mail";
   if (conta) return "Com acesso";
+  if (donoDoEmail) return "E-mail da equipe";
   return prestador.convidadoEm ? "Convite enviado" : "Sem convite";
 }
 
@@ -70,6 +77,7 @@ function detalheDoAcesso(prestador: Prestador, situacao: SituacaoAcesso, conta: 
   if (situacao === "Convite enviado") return `Enviado em ${formatarData(prestador.convidadoEm)}`;
   if (situacao === "Sem convite") return "Falta enviar o convite";
   if (situacao === "Sem e-mail") return "O e-mail é o login do portal";
+  if (situacao === "E-mail da equipe") return "Este e-mail já é login da equipe";
   return "Não entra no portal";
 }
 
@@ -99,12 +107,14 @@ export default function Cadastro() {
   const [, navegar] = useLocation();
   const podeEditar = pode(usuario, "registros.editar");
   const contas = useContasDoPortal(usuario?.papel === "admin");
+  const equipe = useColecao(usuarios);
+  const donoNaEquipe = (email: string) => equipe.find((pessoa) => email && pessoa.email.trim().toLowerCase() === email.trim().toLowerCase())?.nome ?? null;
   const [editando, setEditando] = useState<Prestador | "novo" | null>(null);
   const [aberto, setAberto] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState<Filtro>("Todos");
   const [categoria, setCategoria] = useState<CategoriaPrestador | "">("");
-  const [aviso, setAviso] = useState<{ tom: "sucesso" | "erro"; texto: string } | null>(null);
+  const [aviso, setAviso] = useState<{ tom: "sucesso" | "erro"; texto: string; prestadorId: string } | null>(null);
   const [convidando, setConvidando] = useState<string | null>(null);
 
   // Lotes que esperam o escritório, por prestador.
@@ -115,12 +125,14 @@ export default function Cadastro() {
   const linhas = prestadores
     .map((prestador) => {
       const conta = contas?.get(prestador.id);
-      const situacao = situacaoDoAcesso(prestador, conta);
-      return { prestador, conta, situacao, atividade: atividadeDe(prestador, recibos, fechamentos, aguardando) };
+      const donoDoEmail = donoNaEquipe(prestador.email);
+      const situacao = situacaoDoAcesso(prestador, conta, donoDoEmail);
+      return { prestador, conta, situacao, donoDoEmail, atividade: atividadeDe(prestador, recibos, fechamentos, aguardando) };
     })
     .sort((a, b) => a.prestador.nome.localeCompare(b.prestador.nome, "pt-BR"));
 
-  const pendente = (situacao: SituacaoAcesso) => situacao === "Sem convite" || situacao === "Sem e-mail" || situacao === "Convite enviado";
+  const pendente = (situacao: SituacaoAcesso) =>
+    situacao === "Sem convite" || situacao === "Sem e-mail" || situacao === "E-mail da equipe" || situacao === "Convite enviado";
   const PASSA: Record<Filtro, (linha: (typeof linhas)[number]) => boolean> = {
     Todos: () => true,
     "Portal ativo": (linha) => linha.prestador.portalAtivo,
@@ -148,10 +160,15 @@ export default function Cadastro() {
     const erro = await convidar({ tipo: "prestador", email: prestador.email, nome: prestador.nome, prestadorId: prestador.id });
     setConvidando(null);
     if (!erro) registrarConvitePortal(prestador.id);
-    setAviso(erro ? { tom: "erro", texto: erro } : { tom: "sucesso", texto: `Convite do portal enviado para ${prestador.email}.` });
+    const texto = !erro
+      ? `Convite do portal enviado para ${prestador.email}.`
+      : /já existe um acesso/i.test(erro)
+        ? `${prestador.email} já é login de outro acesso do sistema. Cada acesso precisa de um e-mail próprio: edite o cadastro e use outro e-mail do prestador.`
+        : erro;
+    setAviso({ tom: erro ? "erro" : "sucesso", texto, prestadorId: prestador.id });
   }
   const podeConvidar = (prestador: Prestador, situacao: SituacaoAcesso) =>
-    MODO_REAL && podeEditar && prestador.portalAtivo && Boolean(prestador.email) && situacao !== "Com acesso";
+    MODO_REAL && podeEditar && prestador.portalAtivo && Boolean(prestador.email) && situacao !== "Com acesso" && situacao !== "E-mail da equipe";
 
   return (
     <>
@@ -311,6 +328,7 @@ export default function Cadastro() {
           podeEditar={podeEditar}
           podeConvidar={podeConvidar(linhaAberta.prestador, linhaAberta.situacao)}
           convidando={convidando === linhaAberta.prestador.id}
+          aviso={aviso?.prestadorId === linhaAberta.prestador.id ? aviso : null}
           aoConvidar={() => convidarPortal(linhaAberta.prestador)}
           aoEditar={() => setEditando(linhaAberta.prestador)}
           aoFechar={() => setAberto(null)}
@@ -319,7 +337,7 @@ export default function Cadastro() {
       ) : null}
 
       {editando ? (
-        <FormularioPrestador prestador={editando === "novo" ? null : editando} todos={prestadores} aoFechar={() => setEditando(null)} />
+        <FormularioPrestador prestador={editando === "novo" ? null : editando} todos={prestadores} donoNaEquipe={donoNaEquipe} aoFechar={() => setEditando(null)} />
       ) : null}
     </>
   );
@@ -337,7 +355,11 @@ function passosDoAcesso(prestador: Prestador, situacao: SituacaoAcesso, conta: C
   const comAcesso = situacao === "Com acesso";
   const convidado = comAcesso || situacao === "Convite enviado";
   return [
-    { rotulo: "Cadastro", detalhe: prestador.email ? "E-mail informado" : "Falta o e-mail", feito: Boolean(prestador.email) },
+    {
+      rotulo: "Cadastro",
+      detalhe: !prestador.email ? "Falta o e-mail" : situacao === "E-mail da equipe" ? "E-mail já usado" : "E-mail informado",
+      feito: Boolean(prestador.email) && situacao !== "E-mail da equipe",
+    },
     { rotulo: "Convite", detalhe: prestador.convidadoEm ? `Enviado em ${formatarData(prestador.convidadoEm)}` : convidado ? "Enviado" : "Não enviado", feito: convidado },
     {
       rotulo: "Senha criada",
@@ -348,9 +370,11 @@ function passosDoAcesso(prestador: Prestador, situacao: SituacaoAcesso, conta: C
 }
 
 /** O que falta para o prestador entrar — o texto do próximo passo. */
-function proximoPasso(situacao: SituacaoAcesso) {
+function proximoPasso(situacao: SituacaoAcesso, donoDoEmail?: string | null) {
   if (situacao === "Desativado") return "O acesso está desligado. Para liberar, edite o cadastro e ative o portal.";
   if (situacao === "Sem e-mail") return "Cadastre o e-mail do prestador: ele é o login do portal.";
+  if (situacao === "E-mail da equipe")
+    return `Este e-mail já é o login de ${donoDoEmail ?? "alguém da equipe"} no escritório, e cada acesso precisa de um e-mail próprio. Edite o cadastro e use outro e-mail do prestador.`;
   if (situacao === "Sem convite") return "Envie o convite: o prestador recebe um e-mail para criar a própria senha.";
   if (situacao === "Convite enviado") return "O prestador ainda não criou a senha. Se o e-mail não chegou ou o link expirou, reenvie.";
   return null;
@@ -360,10 +384,12 @@ function FichaPrestador({
   prestador,
   conta,
   situacao,
+  donoDoEmail,
   atividade,
   podeEditar,
   podeConvidar,
   convidando,
+  aviso,
   aoConvidar,
   aoEditar,
   aoFechar,
@@ -372,17 +398,20 @@ function FichaPrestador({
   prestador: Prestador;
   conta: ContaPortal | undefined;
   situacao: SituacaoAcesso;
+  donoDoEmail: string | null;
   atividade: Atividade;
   podeEditar: boolean;
   podeConvidar: boolean;
   convidando: boolean;
+  /** Resultado do último convite deste prestador: aparece aqui, ao lado do botão. */
+  aviso: { tom: "sucesso" | "erro"; texto: string } | null;
   aoConvidar: () => void;
   aoEditar: () => void;
   aoFechar: () => void;
   aoAbrirConferencia: () => void;
 }) {
   const whatsapp = prestador.telefone ? linkWhatsApp(prestador.telefone) : null;
-  const passo = MODO_REAL ? proximoPasso(situacao) : prestador.portalAtivo ? null : proximoPasso("Desativado");
+  const passo = MODO_REAL ? proximoPasso(situacao, donoDoEmail) : prestador.portalAtivo ? null : proximoPasso("Desativado");
   const faltando = [!prestador.email && "e-mail", !prestador.documento && "CPF/CNPJ", !prestador.telefone && "telefone"].filter(Boolean) as string[];
   const ano = HOJE.slice(0, 4);
 
@@ -432,6 +461,11 @@ function FichaPrestador({
                 <Send size={14} strokeWidth={2} /> {convidando ? "Enviando…" : situacao === "Convite enviado" ? "Reenviar convite" : "Enviar convite"}
               </button>
             ) : null}
+          </div>
+        ) : null}
+        {aviso ? (
+          <div className={`acesso-alerta-${aviso.tom} espaco-acima-curto`} role="status">
+            <span>{aviso.texto}</span>
           </div>
         ) : null}
       </section>
@@ -540,7 +574,17 @@ function FichaPrestador({
 
 type Erros = Partial<Record<"nome" | "email" | "codigoAcesso" | "senha", string>>;
 
-function FormularioPrestador({ prestador, todos, aoFechar }: { prestador: Prestador | null; todos: Prestador[]; aoFechar: () => void }) {
+function FormularioPrestador({
+  prestador,
+  todos,
+  donoNaEquipe,
+  aoFechar,
+}: {
+  prestador: Prestador | null;
+  todos: Prestador[];
+  donoNaEquipe: (email: string) => string | null;
+  aoFechar: () => void;
+}) {
   const [dados, setDados] = useState({
     nome: prestador?.nome ?? "",
     categoria: prestador?.categoria ?? ("Motoboy" as CategoriaPrestador),
@@ -562,6 +606,8 @@ function FormularioPrestador({ prestador, todos, aoFechar }: { prestador: Presta
     const encontrados: Erros = {};
     if (!dados.nome.trim()) encontrados.nome = "Informe o nome ou a razão social.";
     if (dados.email && !/^\S+@\S+\.\S+$/.test(dados.email)) encontrados.email = "E-mail inválido.";
+    else if (MODO_REAL && dados.email.trim() && donoNaEquipe(dados.email))
+      encontrados.email = `Este e-mail já é o login de ${donoNaEquipe(dados.email)} no escritório. Use outro e-mail do prestador.`;
     if (!dados.codigoAcesso.trim()) encontrados.codigoAcesso = MODO_REAL ? "Defina o código do prestador." : "Defina o código de acesso ao portal.";
     else if (!codigoDisponivel(dados.codigoAcesso, todos, prestador?.id)) encontrados.codigoAcesso = "Este código já é de outro prestador.";
     // Na edição, senha em branco mantém a atual; no cadastro, é obrigatória.
