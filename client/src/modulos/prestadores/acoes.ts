@@ -177,6 +177,40 @@ export function guardarUnificados(prestadorId: string, competencia: string, unif
   registrar(prestadorId, "arquivo", "Recibos e notas unificados salvos na pasta", autor, `${unificados.length} recibo(s) · ${formatMonthTitle(competencia)}`);
 }
 
+/** O que sai junto com o prestador e o que impede a exclusão. */
+export function impactoDaExclusao(prestadorId: string) {
+  const deles = recibos.ler().filter((recibo) => recibo.prestadorId === prestadorId);
+  const meses = fechamentos.ler().filter((fechamento) => fechamento.prestadorId === prestadorId);
+  // Lote enviado e ainda não pago: conferência ou pagamento em andamento.
+  const emAndamento = meses.filter((fechamento) => fechamento.submitted && fechamento.review && fechamento.review !== "Pago" && fechamento.review !== "Rejeitado");
+  return { recibos: deles.length, fechamentos: meses.length, emAndamento };
+}
+
+/**
+ * Exclui o prestador com os recibos, os fechamentos e os arquivos dele. O
+ * acesso ao portal acaba junto (o login deixa de achar o cadastro). Lote em
+ * conferência ou esperando pagamento impede: finalize ou exclua o lote antes.
+ */
+export function excluirPrestador(prestadorId: string, autor: string): string | null {
+  const alvo = prestadores.ler().find((prestador) => prestador.id === prestadorId);
+  if (!alvo) return "Prestador não encontrado.";
+  const { emAndamento } = impactoDaExclusao(prestadorId);
+  if (emAndamento.length)
+    return `${alvo.nome} tem ${emAndamento.length} lote(s) em conferência ou esperando pagamento (${emAndamento.map((f) => formatMonthTitle(f.competencia)).join(", ")}). Pague ou exclua esses lotes antes.`;
+  const deles = recibos.ler().filter((recibo) => recibo.prestadorId === prestadorId);
+  const meses = fechamentos.ler().filter((fechamento) => fechamento.prestadorId === prestadorId);
+  recibos.atualizar((lista) => lista.filter((recibo) => recibo.prestadorId !== prestadorId));
+  fechamentos.atualizar((lista) => lista.filter((fechamento) => fechamento.prestadorId !== prestadorId));
+  prestadores.atualizar((lista) => lista.filter((prestador) => prestador.id !== prestadorId));
+  const arquivos = [
+    ...deles.flatMap(anexosDoRecibo),
+    ...meses.flatMap((fechamento) => [...documentosDoFechamento(fechamento), ...(fechamento.documentoUnico ? [fechamento.documentoUnico] : []), ...(fechamento.unificados ?? [])]),
+  ];
+  arquivos.forEach((arquivo) => arquivo.id && void apagarAnexo(arquivo.id));
+  registrar(prestadorId, "exclusao", "Prestador excluído", autor, `${alvo.nome} · ${deles.length} recibo(s) e ${meses.length} fechamento(s) excluídos`);
+  return null;
+}
+
 export function salvarPrestador(dados: Prestador) {
   prestadores.atualizar((lista) =>
     lista.some((prestador) => prestador.id === dados.id)

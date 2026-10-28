@@ -4406,3 +4406,44 @@ span.anexo-chip-abrir {
     padding-left: 12px;
   }
 }
+
+/* ── Formulário do prestador ────────────────────────────────────────────── */
+.modal-panel.ficha-prestador {
+  width: min(720px, calc(100vw - 32px));
+}
+.ficha-prestador-corpo {
+  grid-template-columns: minmax(0, 1fr);
+}
+.ficha-secao .field-grid {
+  align-items: start;
+}
+.categoria-opcoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ficha-prestador-dica {
+  align-self: end;
+  margin: 0 0 6px;
+}
+.ficha-secao-perigo {
+  border-color: var(--status-red-fg);
+  background: var(--status-red-bg);
+}
+.ficha-secao-perigo h3 {
+  color: var(--status-red-fg);
+}
+.ficha-secao-perigo p {
+  margin: 0;
+  font-size: 13px;
+}
+.ficha-usuario-rodape-espaco {
+  margin-right: auto;
+}
+.button-primary.botao-excluir {
+  border-color: var(--status-red-fg);
+  background: var(--status-red-fg);
+}
+.texto-mono {
+  font-family: var(--font-mono);
+}

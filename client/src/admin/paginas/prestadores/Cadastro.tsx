@@ -7,16 +7,16 @@ import Cabecalho from "@/admin/componentes/Cabecalho";
 import Campo from "@/admin/componentes/Campo";
 import Gaveta from "@/admin/componentes/Gaveta";
 import Kpi from "@/admin/componentes/Kpi";
-import Painel from "@/admin/componentes/Painel";
+import { usarModal } from "@/admin/componentes/usarModal";
 import Selo, { type Tom } from "@/admin/componentes/Selo";
 import Vazio from "@/admin/componentes/Vazio";
 import { closingTotal, formatBRL, formatMonth, type Closing, type Receipt } from "@/lib/portal";
-import { registrarConvitePortal, salvarPrestador } from "@/modulos/prestadores/acoes";
+import { excluirPrestador, impactoDaExclusao, registrarConvitePortal, salvarPrestador } from "@/modulos/prestadores/acoes";
 import { codigoDisponivel, conferenciaAberta, montarLotes } from "@/modulos/prestadores/regras";
 import { CATEGORIAS_PRESTADOR, type CategoriaPrestador, type Prestador } from "@/modulos/prestadores/tipos";
 import { useDadosPrestadores } from "@/modulos/prestadores/usarDados";
-import { AlertTriangle, Check, ClipboardCheck, FileText, IdCard, Mail, MessageCircle, Pencil, Phone, Plus, Search, SearchX, Send, UserCheck, Users, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { AlertTriangle, Check, ClipboardCheck, FileText, IdCard, Mail, MessageCircle, Pencil, Phone, Plus, Search, SearchX, Send, Trash2, Truck, UserCheck, Users, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 
 /**
@@ -106,10 +106,13 @@ export default function Cadastro() {
   const usuario = useUsuarioAtual();
   const [, navegar] = useLocation();
   const podeEditar = pode(usuario, "prestadores.cadastro.editar");
+  // Excluir o prestador apaga junto os recibos e os lotes dele: precisa das duas permissões.
+  const podeExcluirPrestador = pode(usuario, "prestadores.cadastro.excluir") && pode(usuario, "prestadores.recibos.excluir");
   const contas = useContasDoPortal(usuario?.papel === "admin");
   const equipe = useColecao(usuarios);
   const donoNaEquipe = (email: string) => equipe.find((pessoa) => email && pessoa.email.trim().toLowerCase() === email.trim().toLowerCase())?.nome ?? null;
   const [editando, setEditando] = useState<Prestador | "novo" | null>(null);
+  const [comecarExcluindo, setComecarExcluindo] = useState(false);
   const [aberto, setAberto] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState<Filtro>("Todos");
@@ -331,13 +334,33 @@ export default function Cadastro() {
           aviso={aviso?.prestadorId === linhaAberta.prestador.id ? aviso : null}
           aoConvidar={() => convidarPortal(linhaAberta.prestador)}
           aoEditar={() => setEditando(linhaAberta.prestador)}
+          aoExcluir={
+            podeExcluirPrestador
+              ? () => {
+                  setComecarExcluindo(true);
+                  setEditando(linhaAberta.prestador);
+                }
+              : undefined
+          }
           aoFechar={() => setAberto(null)}
           aoAbrirConferencia={() => navegar("/prestadores/conferencia")}
         />
       ) : null}
 
       {editando ? (
-        <FormularioPrestador prestador={editando === "novo" ? null : editando} todos={prestadores} donoNaEquipe={donoNaEquipe} aoFechar={() => setEditando(null)} />
+        <FormularioPrestador
+          prestador={editando === "novo" ? null : editando}
+          todos={prestadores}
+          donoNaEquipe={donoNaEquipe}
+          podeExcluir={podeExcluirPrestador}
+          autor={usuario?.nome ?? "Escritório"}
+          aoFechar={() => {
+            setEditando(null);
+            setComecarExcluindo(false);
+          }}
+          aoExcluido={() => setAberto(null)}
+          comecarExcluindo={comecarExcluindo}
+        />
       ) : null}
     </>
   );
@@ -392,9 +415,11 @@ function FichaPrestador({
   aviso,
   aoConvidar,
   aoEditar,
+  aoExcluir,
   aoFechar,
   aoAbrirConferencia,
 }: {
+  aoExcluir?: () => void;
   prestador: Prestador;
   conta: ContaPortal | undefined;
   situacao: SituacaoAcesso;
@@ -422,12 +447,20 @@ function FichaPrestador({
       subtitulo={`${prestador.categoria} · prestador desde ${formatarData(prestador.desde)}`}
       aoFechar={aoFechar}
       rodape={
-        podeEditar ? (
+        podeEditar || aoExcluir ? (
           <>
-            <span />
-            <button type="button" className="button-secondary" onClick={aoEditar}>
-              <Pencil size={14} strokeWidth={2} /> Editar cadastro
-            </button>
+            {aoExcluir ? (
+              <button type="button" className="text-button text-button-perigo" onClick={aoExcluir}>
+                <Trash2 size={14} strokeWidth={2} /> Excluir prestador
+              </button>
+            ) : (
+              <span />
+            )}
+            {podeEditar ? (
+              <button type="button" className="button-secondary" onClick={aoEditar}>
+                <Pencil size={14} strokeWidth={2} /> Editar cadastro
+              </button>
+            ) : null}
           </>
         ) : null
       }
@@ -578,13 +611,28 @@ function FormularioPrestador({
   prestador,
   todos,
   donoNaEquipe,
+  podeExcluir,
+  autor,
   aoFechar,
+  aoExcluido,
+  comecarExcluindo,
 }: {
+  comecarExcluindo?: boolean;
   prestador: Prestador | null;
   todos: Prestador[];
   donoNaEquipe: (email: string) => string | null;
+  podeExcluir: boolean;
+  autor: string;
   aoFechar: () => void;
+  aoExcluido?: () => void;
 }) {
+  const [excluindo, setExcluindo] = useState(comecarExcluindo ?? false);
+  const [erroExclusao, setErroExclusao] = useState<string | null>(null);
+  const confirmacao = useRef<HTMLElement>(null);
+  // A confirmação fica no fim do formulário: rola até ela ao abrir.
+  useEffect(() => {
+    if (excluindo) confirmacao.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [excluindo]);
   const [dados, setDados] = useState({
     nome: prestador?.nome ?? "",
     categoria: prestador?.categoria ?? ("Motoboy" as CategoriaPrestador),
@@ -638,72 +686,163 @@ function FormularioPrestador({
     aoFechar();
   }
 
+  const raiz = usarModal(aoFechar);
+  const impacto = prestador ? impactoDaExclusao(prestador.id) : null;
+
   return (
-    <Painel
-      rotulo={prestador ? "Editar prestador" : "Novo prestador"}
-      titulo={prestador?.nome ?? "Cadastrar prestador"}
-      descricao={MODO_REAL ? "O e-mail é o login do portal; depois de salvar, envie o convite pela lista ou pela ficha." : "O código e a senha são o acesso do prestador ao Portal do Prestador."}
-      aoFechar={aoFechar}
-      aoEnviar={salvar}
-    >
-      <div className="field-grid">
-        <Campo id="prest-nome" rotulo="Nome ou razão social" erro={erros.nome}>
-          {(aria) => <input {...aria} className="field-input" value={dados.nome} onChange={(e) => mudar("nome", e.target.value)} />}
-        </Campo>
-        <Campo id="prest-categoria" rotulo="Categoria">
-          {(aria) => (
-            <select {...aria} className="field-input" value={dados.categoria} onChange={(e) => mudar("categoria", e.target.value as CategoriaPrestador)}>
-              {CATEGORIAS_PRESTADOR.map((categoria) => (
-                <option key={categoria}>{categoria}</option>
-              ))}
-            </select>
-          )}
-        </Campo>
-      </div>
-      <div className="field-grid">
-        <Campo id="prest-email" rotulo="E-mail" erro={erros.email} dica={MODO_REAL ? "Login do portal" : undefined}>
-          {(aria) => <input {...aria} className="field-input" type="email" value={dados.email} onChange={(e) => mudar("email", e.target.value)} />}
-        </Campo>
-        <Campo id="prest-telefone" rotulo="Telefone">
-          {(aria) => <input {...aria} className="field-input" value={dados.telefone} onChange={(e) => mudar("telefone", e.target.value)} placeholder="(11) 99999-9999" />}
-        </Campo>
-      </div>
-      <div className="field-grid">
-        <Campo id="prest-documento" rotulo="CPF ou CNPJ">
-          {(aria) => <input {...aria} className="field-input" value={dados.documento} onChange={(e) => mudar("documento", e.target.value)} />}
-        </Campo>
-        <Campo
-          id="prest-codigo"
-          rotulo={MODO_REAL ? "Código do prestador" : "Código de acesso"}
-          erro={erros.codigoAcesso}
-          dica={MODO_REAL ? "Numera os recibos: REC-código-0001" : "Ex.: PNST-0000"}
+    <div className="modal-backdrop" onMouseDown={(evento) => evento.target === evento.currentTarget && aoFechar()}>
+      <div ref={raiz} className="modal-panel ficha-usuario ficha-prestador" role="dialog" aria-modal="true" aria-labelledby="ficha-prestador-titulo">
+        <header className="ficha-usuario-topo">
+          <span className="avatar avatar-grande" aria-hidden="true">
+            {dados.nome.trim() ? iniciais(dados.nome) : <Truck size={20} strokeWidth={1.8} />}
+          </span>
+          <div className="ficha-usuario-identidade">
+            <span className="eyebrow">{prestador ? "Editar prestador" : "Novo prestador"}</span>
+            <h2 id="ficha-prestador-titulo">{dados.nome.trim() || "Cadastrar prestador"}</h2>
+            <span className="ficha-usuario-meta">
+              <Selo tom="neutral">{dados.categoria}</Selo>
+              {dados.portalAtivo ? <Selo tom="green">Portal ativo</Selo> : <Selo tom="neutral">Portal desativado</Selo>}
+              {dados.codigoAcesso ? <span className="texto-mono">{dados.codigoAcesso.toUpperCase()}</span> : null}
+            </span>
+          </div>
+          <button type="button" className="icon-button" aria-label="Fechar" data-fechar onClick={aoFechar}>
+            <X size={17} strokeWidth={2} />
+          </button>
+        </header>
+
+        <form
+          className="ficha-usuario-corpo ficha-prestador-corpo"
+          onSubmit={(evento) => {
+            evento.preventDefault();
+            salvar();
+          }}
+          noValidate
         >
-          {(aria) => (
-            <input {...aria} className="field-input" value={dados.codigoAcesso} onChange={(e) => mudar("codigoAcesso", e.target.value)} autoCapitalize="characters" autoComplete="off" />
-          )}
-        </Campo>
+          <section className="ficha-secao">
+            <h3>Identificação</h3>
+            <Campo id="prest-nome" rotulo="Nome ou razão social" erro={erros.nome}>
+              {(aria) => <input {...aria} className="field-input" value={dados.nome} onChange={(e) => mudar("nome", e.target.value)} placeholder="Ex.: Rota Leve Entregas" />}
+            </Campo>
+            <div className="field-grid">
+              <Campo id="prest-documento" rotulo="CPF ou CNPJ">
+                {(aria) => <input {...aria} className="field-input" value={dados.documento} onChange={(e) => mudar("documento", e.target.value)} placeholder="00.000.000/0000-00" />}
+              </Campo>
+              <div className="field-group">
+                <span className="field-label" id="prest-categoria-rotulo">
+                  Categoria
+                </span>
+                <div className="categoria-opcoes" role="radiogroup" aria-labelledby="prest-categoria-rotulo">
+                  {CATEGORIAS_PRESTADOR.map((categoria) => (
+                    <button
+                      key={categoria}
+                      type="button"
+                      role="radio"
+                      aria-checked={dados.categoria === categoria}
+                      className={dados.categoria === categoria ? "filter-chip filter-chip-active" : "filter-chip"}
+                      onClick={() => mudar("categoria", categoria)}
+                    >
+                      {categoria}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="ficha-secao">
+            <h3>Contato</h3>
+            <div className="field-grid">
+              <Campo id="prest-email" rotulo={MODO_REAL ? "E-mail · login do portal" : "E-mail"} erro={erros.email}>
+                {(aria) => <input {...aria} className="field-input" type="email" value={dados.email} onChange={(e) => mudar("email", e.target.value)} placeholder="nome@empresa.com.br" />}
+              </Campo>
+              <Campo id="prest-telefone" rotulo="Telefone / WhatsApp">
+                {(aria) => <input {...aria} className="field-input" value={dados.telefone} onChange={(e) => mudar("telefone", e.target.value)} placeholder="(11) 99999-9999" />}
+              </Campo>
+            </div>
+          </section>
+
+          <section className="ficha-secao">
+            <h3>Acesso ao portal</h3>
+            <div className="field-grid">
+              <Campo id="prest-codigo" rotulo={MODO_REAL ? "Código do prestador" : "Código de acesso"} erro={erros.codigoAcesso}>
+                {(aria) => (
+                  <input {...aria} className="field-input texto-mono" value={dados.codigoAcesso} onChange={(e) => mudar("codigoAcesso", e.target.value)} autoCapitalize="characters" autoComplete="off" placeholder="PNST-0000" />
+                )}
+              </Campo>
+              {MODO_REAL ? (
+                <p className="field-hint ficha-prestador-dica">
+                  O código numera os recibos (REC-código-0001). O login é o e-mail: depois de salvar, envie o convite pela lista ou pela ficha.
+                </p>
+              ) : (
+                <Campo id="prest-senha" rotulo="Senha do portal" erro={erros.senha}>
+                  {(aria) => (
+                    <input {...aria} className="field-input" type="password" value={dados.senha} onChange={(e) => mudar("senha", e.target.value)} autoComplete="new-password" placeholder={prestador ? "Em branco mantém a atual" : "Mínimo de 6 caracteres"} />
+                  )}
+                </Campo>
+              )}
+            </div>
+            <div className="toggle-row">
+              <div>
+                <strong className="field-label" id="prest-ativo-rotulo">
+                  Acesso ao portal ativo
+                </strong>
+                <p className="field-hint">Desativar encerra a sessão aberta do prestador.</p>
+              </div>
+              <button type="button" className="switch" role="switch" aria-checked={dados.portalAtivo} aria-labelledby="prest-ativo-rotulo" onClick={() => mudar("portalAtivo", !dados.portalAtivo)} />
+            </div>
+          </section>
+
+          {excluindo && prestador && impacto ? (
+            <section ref={confirmacao} className="ficha-secao ficha-secao-perigo" role="alert">
+              <h3>Excluir {prestador.nome}?</h3>
+              {impacto.emAndamento.length ? (
+                <p className="texto-perigo">
+                  Há {impacto.emAndamento.length} lote(s) em conferência ou esperando pagamento. Pague ou exclua esses lotes na Conferência antes de excluir o prestador.
+                </p>
+              ) : (
+                <p>
+                  Saem junto {impacto.recibos} recibo(s), {impacto.fechamentos} fechamento(s) e os arquivos deles. O acesso ao portal é encerrado. Não dá para desfazer.
+                </p>
+              )}
+              {erroExclusao ? <p className="texto-perigo">{erroExclusao}</p> : null}
+              <div className="inline-row inline-row-fim">
+                <button type="button" className="button-secondary" onClick={() => setExcluindo(false)}>
+                  Manter prestador
+                </button>
+                {!impacto.emAndamento.length ? (
+                  <button
+                    type="button"
+                    className="button-primary botao-excluir"
+                    onClick={() => {
+                      const erro = excluirPrestador(prestador.id, autor);
+                      if (erro) return setErroExclusao(erro);
+                      aoExcluido?.();
+                      aoFechar();
+                    }}
+                  >
+                    <Trash2 size={14} strokeWidth={2} /> Excluir definitivamente
+                  </button>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
+
+          <footer className="ficha-usuario-rodape">
+            {prestador && podeExcluir && !excluindo ? (
+              <button type="button" className="text-button text-button-perigo" onClick={() => setExcluindo(true)}>
+                <Trash2 size={14} strokeWidth={2} /> Excluir prestador
+              </button>
+            ) : null}
+            <span className="ficha-usuario-rodape-espaco" />
+            <button type="button" className="button-secondary" onClick={aoFechar}>
+              Cancelar
+            </button>
+            <button type="submit" className="button-primary">
+              {prestador ? "Salvar alterações" : "Cadastrar prestador"}
+            </button>
+          </footer>
+        </form>
       </div>
-      {MODO_REAL ? null : (
-        <Campo id="prest-senha" rotulo="Senha do portal" erro={erros.senha} dica={prestador ? "Em branco mantém a atual" : "Mínimo de 6 caracteres"}>
-          {(aria) => <input {...aria} className="field-input" type="password" value={dados.senha} onChange={(e) => mudar("senha", e.target.value)} autoComplete="new-password" />}
-        </Campo>
-      )}
-      <div className="toggle-row">
-        <div>
-          <strong className="field-label" id="prest-ativo-rotulo">
-            Acesso ao portal ativo
-          </strong>
-          <p className="field-hint">Desativar encerra a sessão aberta do prestador.</p>
-        </div>
-        <button
-          type="button"
-          className="switch"
-          role="switch"
-          aria-checked={dados.portalAtivo}
-          aria-labelledby="prest-ativo-rotulo"
-          onClick={() => mudar("portalAtivo", !dados.portalAtivo)}
-        />
-      </div>
-    </Painel>
+    </div>
   );
 }
