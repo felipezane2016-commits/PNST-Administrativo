@@ -6,10 +6,10 @@ import Campo from "@/admin/componentes/Campo";
 import Painel from "@/admin/componentes/Painel";
 import Selo from "@/admin/componentes/Selo";
 import Vazio from "@/admin/componentes/Vazio";
-import { salvarFornecedor, validarFornecedor } from "@/modulos/pagamentos/acoes";
+import { excluirFornecedor, pedidosAbertosDoFornecedor, salvarFornecedor, validarFornecedor } from "@/modulos/pagamentos/acoes";
 import { useDadosPagamentos } from "@/modulos/pagamentos/colecoes";
 import type { Fornecedor } from "@/modulos/pagamentos/tipos";
-import { Building2, Plus, ShieldCheck } from "lucide-react";
+import { Building2, Pencil, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 export default function Fornecedores() {
@@ -17,6 +17,8 @@ export default function Fornecedores() {
   const { fornecedores } = useDadosPagamentos();
   const [editando, setEditando] = useState<Fornecedor | "novo" | null>(null);
   const [validando, setValidando] = useState<Fornecedor | null>(null);
+  const [excluindo, setExcluindo] = useState<Fornecedor | null>(null);
+  const [erroExclusao, setErroExclusao] = useState<string | null>(null);
   const podeEditar = pode(usuario, "pagamentos.fornecedores");
   const pendentes = fornecedores.filter((f) => !f.dadosValidados);
 
@@ -77,9 +79,22 @@ export default function Fornecedores() {
                     <td>{f.dadosValidados ? <Selo tom="green">Validado</Selo> : <Selo tom="red">A validar</Selo>}</td>
                     <td>
                       {podeEditar ? (
-                        <button type="button" className="text-button" onClick={() => setEditando(f)}>
-                          Editar
-                        </button>
+                        <div className="cell-actions">
+                          <button type="button" className="text-button text-button-neutro" onClick={() => setEditando(f)} aria-label={`Editar ${f.nome}`}>
+                            <Pencil size={13} strokeWidth={2} /> Editar
+                          </button>
+                          <button
+                            type="button"
+                            className="text-button text-button-perigo"
+                            onClick={() => {
+                              setErroExclusao(null);
+                              setExcluindo(f);
+                            }}
+                            aria-label={`Excluir ${f.nome}`}
+                          >
+                            <Trash2 size={13} strokeWidth={2} /> Excluir
+                          </button>
+                        </div>
                       ) : null}
                     </td>
                   </tr>
@@ -90,6 +105,34 @@ export default function Fornecedores() {
         )}
       </section>
       {editando ? <FormularioFornecedor fornecedor={editando === "novo" ? null : editando} autor={usuario?.nome ?? ""} aoFechar={() => setEditando(null)} /> : null}
+      {excluindo ? (
+        <Painel
+          rotulo="Fornecedores"
+          titulo={`Excluir ${excluindo.nome}?`}
+          aoFechar={() => setExcluindo(null)}
+          aoEnviar={() => {
+            const erro = excluirFornecedor(excluindo.id);
+            if (erro) return setErroExclusao(erro);
+            setExcluindo(null);
+          }}
+          textoEnviar="Excluir fornecedor"
+        >
+          <p>
+            <strong>{excluindo.nome}</strong>
+            {excluindo.documento ? ` · ${excluindo.documento}` : ""}
+          </p>
+          {pedidosAbertosDoFornecedor(excluindo.id).length ? (
+            <p className="texto-perigo">Este fornecedor tem pedidos em andamento: conclua ou cancele esses pedidos antes de excluir.</p>
+          ) : (
+            <p className="texto-perigo">O cadastro e os dados bancários saem da lista. Pedidos já pagos ou encerrados continuam com o nome do favorecido. Não dá para desfazer.</p>
+          )}
+          {erroExclusao ? (
+            <p className="acesso-alerta-erro" role="alert">
+              {erroExclusao}
+            </p>
+          ) : null}
+        </Painel>
+      ) : null}
       {validando ? (
         <Painel
           rotulo="Validação"

@@ -112,6 +112,7 @@ export function finalizarConferencia(prestadorId: string, competencia: string, a
     titulo: "Conferência finalizada",
     corpo: `${nome} — ${formatMonth(competencia)} conferido, aguardando pagamento.`,
     destino: "/prestadores/conferencia",
+    exige: "prestadores.conferencia.pagar",
   });
 }
 

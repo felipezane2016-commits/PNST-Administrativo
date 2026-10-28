@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { permissoesEfetivas, pode, veModulo, type Acao, type Usuario } from "../client/src/_core/identidade/permissoes";
 import { exigenciaDaRota } from "../client/src/admin/menu";
+import { notificacaoVisivel } from "../client/src/admin/notificacoesVisiveis";
+import type { Notificacao } from "../client/src/modulos/notificacoes/colecao";
 import type { Closing, Receipt } from "../client/src/lib/portal";
 import { economiaPotencial, mediaMovel, spread } from "../client/src/modulos/contas/regras";
 import type { Taxa, TarefaConta } from "../client/src/modulos/contas/tipos";
@@ -173,5 +175,27 @@ describe("Permissões", () => {
     expect(exigenciaDaRota("/contas/ordens/ord-1")).toBe("contas.banco.ver");
     expect(exigenciaDaRota("/contas/pagamentos/aprovacoes")).toBeUndefined();
     expect(exigenciaDaRota("/contas")).toBe("contas.tarefas.ver");
+  });
+});
+
+describe("Notificações por permissão", () => {
+  const pessoa = (papel: Usuario["papel"], modulos: Usuario["modulos"], permissoes: Acao[] | null = null): Usuario => ({
+    id: "u", nome: "U", email: "u@x", senha: "x", departamento: "", papel, modulos, permissoes, ativo: true, ultimoAcesso: null,
+  });
+  const aviso = (destino: string | null, exige?: Acao): Notificacao => ({ id: "n", tipo: "tarefa", titulo: "", corpo: "", quando: "", lida: false, destino, exige });
+
+  it("só aparece o aviso da área e da página que a pessoa abre", () => {
+    expect(notificacaoVisivel(pessoa("operador", ["prestadores"]), aviso("/prestadores/conferencia"))).toBe(true);
+    expect(notificacaoVisivel(pessoa("operador", ["contas"]), aviso("/prestadores/conferencia"))).toBe(false);
+    const semConferencia = pessoa("operador", ["prestadores"], ["prestadores.painel.ver"]);
+    expect(notificacaoVisivel(semConferencia, aviso("/prestadores/conferencia"))).toBe(false);
+    expect(notificacaoVisivel(pessoa("viewer", []), aviso(null))).toBe(true);
+  });
+
+  it("aviso que pede uma ação só vai para quem tem a ação", () => {
+    const pedePagamento = pessoa("viewer", ["pagamentos"]);
+    expect(notificacaoVisivel(pedePagamento, aviso("/contas/pagamentos"))).toBe(true);
+    expect(notificacaoVisivel(pedePagamento, aviso("/contas/pagamentos", "pagamentos.conferir"))).toBe(false);
+    expect(notificacaoVisivel(pessoa("operador", ["pagamentos", "contas"]), aviso("/contas/pagamentos", "pagamentos.conferir"))).toBe(true);
   });
 });

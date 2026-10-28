@@ -1,3 +1,5 @@
+import { useUsuarioAtual } from "@/_core/identidade/sessao";
+import { useNotificacoesVisiveis } from "@/admin/notificacoesVisiveis";
 import { useColecao } from "@/_core/armazenamento/colecao";
 import { formatarDataHora } from "@/_core/tempo";
 import Cabecalho from "@/admin/componentes/Cabecalho";
@@ -17,7 +19,10 @@ const ICONE: Record<TipoNotificacao, LucideIcon> = {
 };
 
 export default function Notificacoes() {
-  const lista = useColecao(notificacoes);
+  const usuario = useUsuarioAtual();
+  // Só o que a pessoa pode resolver, pelas permissões dela.
+  const lista = useNotificacoesVisiveis(usuario);
+  const ids = new Set(lista.map((aviso) => aviso.id));
   const [, navegar] = useLocation();
   const [soNaoLidas, setSoNaoLidas] = useState(false);
   const naoLidas = lista.filter((aviso) => !aviso.lida).length;
@@ -39,7 +44,7 @@ export default function Notificacoes() {
             <button
               type="button"
               className="button-secondary"
-              onClick={() => notificacoes.atualizar((atual) => atual.map((aviso) => ({ ...aviso, lida: true })))}
+              onClick={() => notificacoes.atualizar((atual) => atual.map((aviso) => (ids.has(aviso.id) ? { ...aviso, lida: true } : aviso)))}
             >
               Marcar todas como lidas
             </button>

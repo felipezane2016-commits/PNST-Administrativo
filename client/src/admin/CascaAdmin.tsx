@@ -1,3 +1,4 @@
+import { useNotificacoesVisiveis } from "./notificacoesVisiveis";
 import { useColecao } from "@/_core/armazenamento/colecao";
 import { iniciais, pode, PAPEIS, veModulo, type Usuario } from "@/_core/identidade/permissoes";
 import { sair, usuarios } from "@/_core/identidade/sessao";
@@ -52,7 +53,7 @@ function contadoresPagamentos(usuario: Usuario, lista: Pagamento[], config: Conf
 }
 
 function useContadores(usuario: Usuario): Record<Contador, number> {
-  const avisos = useColecao(notificacoes);
+  const avisos = useNotificacoesVisiveis(usuario);
   const listaRecibos = useColecao(recibos);
   const listaFechamentos = useColecao(fechamentos);
   const listaPrestadores = useColecao(prestadores);
@@ -117,7 +118,7 @@ export default function CascaAdmin({ usuario, titulo, children }: Props) {
   const [caminho, navegar] = useLocation();
   const [menuAberto, setMenuAberto] = useState(false);
   const contadores = useContadores(usuario);
-  const avisos = useColecao(notificacoes);
+  const avisos = useNotificacoesVisiveis(usuario);
 
   // Fecha a gaveta a cada navegação, senão ela cobre a página recém-aberta.
   useEffect(() => {

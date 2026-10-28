@@ -1,4 +1,5 @@
 import { criarColecao } from "@/_core/armazenamento/colecao";
+import type { Permissao } from "@/_core/identidade/permissoes";
 
 export type TipoNotificacao = "atencao" | "tarefa" | "sucesso" | "agenda" | "documento" | "informacao";
 
@@ -10,8 +11,10 @@ export type Notificacao = {
   /** ISO. */
   quando: string;
   lida: boolean;
-  /** Rota do admin que resolve o assunto. */
+  /** Rota do admin que resolve o assunto (quem não abre a página não vê o aviso). */
   destino: string | null;
+  /** Permissão de quem resolve (ex.: só quem confere pagamentos vê "para conferir"). */
+  exige?: Permissao;
 };
 
 const NOTIFICACOES_DEMO: Notificacao[] = [

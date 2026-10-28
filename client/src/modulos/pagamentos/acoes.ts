@@ -44,7 +44,7 @@ export function solicitarPagamento(pedido: Pedido, usuario: Usuario): Pagamento 
     historico: [{ quando: agora(), autor: usuario.nome, texto: pedido.urgente ? "Pagamento solicitado (urgente)." : "Pagamento solicitado." }],
   };
   pagamentos.atualizar((lista) => [...lista, novo]);
-  notificar({ tipo: pedido.urgente ? "atencao" : "tarefa", titulo: `${pedido.urgente ? "Pagamento urgente" : "Novo pagamento"} para conferir`, corpo: `${rotulo(novo)} — pedido por ${usuario.nome}.`, destino: "/contas/pagamentos" });
+  notificar({ tipo: pedido.urgente ? "atencao" : "tarefa", titulo: `${pedido.urgente ? "Pagamento urgente" : "Novo pagamento"} para conferir`, corpo: `${rotulo(novo)} — pedido por ${usuario.nome}.`, destino: "/contas/pagamentos", exige: "pagamentos.conferir" });
   return novo;
 }
 
@@ -67,6 +67,7 @@ export function conferir(id: string, usuario: Usuario): string | null {
     titulo: "Pagamento aguardando aprovação",
     corpo: `${rotulo(pagamento)} — aprova: ${quemAprova(pagamento, usuarios.ler(), configAprovacao.ler(), HOJE)}.`,
     destino: "/contas/pagamentos/aprovacoes",
+    exige: "pagamentos.aprovar",
   });
   return null;
 }
@@ -105,7 +106,7 @@ export function aprovar(id: string, usuario: Usuario, dadosConfirmados = false):
   }
   const quem = { porId: usuario.id, por: usuario.nome, em: agora() };
   alterar(id, usuario.nome, "Aprovado.", () => ({ status: "Aprovado", aprovacao: quem, decisao: quem }));
-  notificar({ tipo: "sucesso", titulo: "Pagamento aprovado", corpo: `${rotulo(pagamento)} — pode ser pago.`, destino: "/contas/pagamentos" });
+  notificar({ tipo: "sucesso", titulo: "Pagamento aprovado", corpo: `${rotulo(pagamento)} — pode ser pago.`, destino: "/contas/pagamentos", exige: "pagamentos.pagar" });
   return null;
 }
 
@@ -207,7 +208,7 @@ export function solicitarDoLote(lote: Lote, usuario: Usuario): Pagamento | null 
     historico: [{ quando: agora(), autor: usuario.nome, texto: "Pedido gerado pela conferência de prestadores (recibos conferidos)." }],
   };
   pagamentos.atualizar((lista) => [...lista, novo]);
-  notificar({ tipo: "tarefa", titulo: "Pagamento aguardando aprovação", corpo: `${rotulo(novo)} — aprova: ${quemAprova(novo, usuarios.ler(), configAprovacao.ler(), HOJE)}.`, destino: "/contas/pagamentos/aprovacoes" });
+  notificar({ tipo: "tarefa", titulo: "Pagamento aguardando aprovação", corpo: `${rotulo(novo)} — aprova: ${quemAprova(novo, usuarios.ler(), configAprovacao.ler(), HOJE)}.`, destino: "/contas/pagamentos/aprovacoes", exige: "pagamentos.aprovar" });
   return novo;
 }
 
@@ -223,7 +224,21 @@ export function salvarFornecedor(dados: Fornecedor, autor: string) {
     historico: [...(antes?.historico ?? []), { quando: agora(), autor, texto }],
   };
   fornecedores.atualizar((lista) => gravarItem(lista, registro));
-  if (mudou) notificar({ tipo: "atencao", titulo: "Dados bancários de fornecedor alterados", corpo: `${dados.nome}: confirme por telefone antes do próximo pagamento.`, destino: "/contas/pagamentos/fornecedores" });
+  if (mudou) notificar({ tipo: "atencao", titulo: "Dados bancários de fornecedor alterados", corpo: `${dados.nome}: confirme por telefone antes do próximo pagamento.`, destino: "/contas/pagamentos/fornecedores", exige: "pagamentos.fornecedores" });
+}
+
+/** Pedidos ainda em andamento que usam o fornecedor: enquanto houver, ele não sai. */
+export function pedidosAbertosDoFornecedor(id: string) {
+  const abertos = ["Em conferência", "Devolvido", "Aguardando aprovação", "Aprovado"];
+  return pagamentos.ler().filter((p) => p.fornecedorId === id && abertos.includes(p.status));
+}
+
+/** Exclui o fornecedor. Pedidos já pagos ou encerrados guardam o nome do favorecido. */
+export function excluirFornecedor(id: string): string | null {
+  const abertos = pedidosAbertosDoFornecedor(id);
+  if (abertos.length) return `Há ${abertos.length} pedido(s) em andamento com este fornecedor (${abertos.map((p) => p.numero).join(", ")}). Conclua ou cancele antes de excluir.`;
+  fornecedores.atualizar((lista) => lista.filter((f) => f.id !== id));
+  return null;
 }
 
 export function validarFornecedor(id: string, autor: string) {
