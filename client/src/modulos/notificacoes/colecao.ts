@@ -54,7 +54,8 @@ const NOTIFICACOES_DEMO: Notificacao[] = [
 ];
 
 export const notificacoes = criarColecao<Notificacao[]>("notificacoes", () => NOTIFICACOES_DEMO, {
-  remota: { tipo: "lista", tabela: "notificacoes", maisNovosPrimeiro: true },
+  // O prestador avisa o escritório mas não lê as notificações: grava sem ler de volta.
+  remota: { tipo: "lista", tabela: "notificacoes", maisNovosPrimeiro: true, semRetorno: true },
   vazio: () => [] });
 
 /** Ponto único para qualquer módulo avisar o escritório. */

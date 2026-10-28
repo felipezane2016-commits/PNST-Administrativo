@@ -50,6 +50,13 @@ export function useErroSincronizacao() {
 }
 export const dispensarErro = () => avisar(null);
 
+/** Erro do Supabase vem como objeto { message, code }, não como Error. */
+function mensagemDe(falha: unknown) {
+  if (falha instanceof Error) return falha.message;
+  if (falha && typeof falha === "object" && "message" in falha) return String((falha as { message: unknown }).message);
+  return String(falha);
+}
+
 /** Mensagem do Postgres (gatilho) em português vem como está; RLS vira algo legível. */
 function traduzir(mensagem: string) {
   if (/row-level security|violates row-level/i.test(mensagem)) return "Seu usuário não tem permissão para esta alteração.";
@@ -135,7 +142,10 @@ async function enviar(colecao: Colecao<unknown>, anterior: unknown, proximo: unk
       return;
     }
     const { novos, alterados, apagar } = diferenca(remota, anterior as Item[], proximo as Item[]);
-    if (novos.length) {
+    if (novos.length && remota.semRetorno) {
+      const { error } = await supabase().from(remota.tabela).insert(novos.map((item) => paraLinha(remota, item)));
+      if (error) throw error;
+    } else if (novos.length) {
       const { data, error } = await supabase().from(remota.tabela).insert(novos.map((item) => paraLinha(remota, item))).select();
       if (error) throw error;
       mesclar(colecao, data as Item[]);
@@ -153,7 +163,7 @@ async function enviar(colecao: Colecao<unknown>, anterior: unknown, proximo: unk
       if (error) throw error;
     }
   } catch (falha) {
-    avisar(`Não foi possível gravar: ${traduzir(falha instanceof Error ? falha.message : String(falha))}`);
+    avisar(`Não foi possível gravar: ${traduzir(mensagemDe(falha))}`);
     await carregar(colecao).catch(() => undefined);
   }
 }

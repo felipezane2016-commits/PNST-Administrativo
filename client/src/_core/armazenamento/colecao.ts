@@ -36,6 +36,11 @@ export type Remota<T> =
       somenteAlterar?: boolean;
       /** Mais novos primeiro (notificações). */
       maisNovosPrimeiro?: boolean;
+      /**
+       * Grava sem ler de volta: quem grava pode não ter permissão de ver o que
+       * gravou (o prestador avisa o escritório, mas não lê as notificações).
+       */
+      semRetorno?: boolean;
     }
   | { tipo: "unico"; tabela: string; id: string; inicial: () => T };
 
