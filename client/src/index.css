@@ -3928,3 +3928,115 @@ span.anexo-chip-abrir {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ── Formulário do recibo ───────────────────────────────────────────────── */
+.modal-panel.modal-recibo {
+  width: min(680px, calc(100vw - 32px));
+}
+.form-secao {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  margin: 0 0 18px;
+  padding: 0;
+  border: 0;
+}
+.form-secao + .form-secao {
+  padding-top: 18px;
+  border-top: 1px solid var(--divider);
+}
+.form-secao > legend {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  float: left;
+  width: 100%;
+  margin-bottom: 14px;
+  padding: 0;
+  color: var(--laranja-700);
+  font: 600 10px/1.3 var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.form-secao > legend + * {
+  clear: both;
+}
+.form-secao-dica {
+  color: var(--tertiary-foreground);
+  font: 400 12px/1.3 var(--font-body);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.form-secao .field-group {
+  margin: 0;
+}
+.form-grade-3 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+}
+.campo-moeda {
+  position: relative;
+  display: block;
+}
+.campo-moeda-simbolo {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
+  color: var(--tertiary-foreground);
+  font-size: 13px;
+  pointer-events: none;
+}
+.campo-moeda .field-input {
+  padding-left: 38px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.upload-zone.upload-zone-compacta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 0;
+  padding: 16px 18px;
+  text-align: left;
+}
+.upload-zone-texto {
+  display: grid;
+  gap: 2px;
+}
+.upload-zone-texto strong {
+  color: var(--foreground);
+  font-size: 13px;
+}
+.upload-zone-texto span {
+  font-size: 12px;
+}
+.modal-recibo-rodape {
+  align-items: center;
+}
+.modal-recibo-total {
+  margin-right: auto;
+  color: var(--tertiary-foreground);
+  font-size: 12.5px;
+}
+.modal-recibo-total strong {
+  margin-left: 6px;
+  color: var(--foreground);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 760px) {
+  .form-grade-3 {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .form-grade-3 > :last-child {
+    grid-column: 1 / -1;
+  }
+  .modal-recibo-total {
+    margin: 0 0 4px;
+    text-align: center;
+  }
+}

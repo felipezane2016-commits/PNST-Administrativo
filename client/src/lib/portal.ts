@@ -331,6 +331,21 @@ export function validateClosing(receipts: Receipt[]) {
 
 export type ValidationErrors = Partial<Record<keyof ReceiptDraft, string>>;
 
+/**
+ * Máscara contábil do campo de valor: os dígitos digitados são centavos e o
+ * campo mostra sempre "1.280,50" (milhar com ponto, duas casas com vírgula).
+ */
+export function maskAmount(digitado: string) {
+  const digitos = digitado.replace(/\D/g, "").replace(/^0+(?=\d)/, "").slice(0, 13);
+  if (!digitos) return "";
+  return formatAmount(Number(digitos) / 100);
+}
+
+/** Valor no formato contábil, sem o símbolo: 1280.5 → "1.280,50". */
+export function formatAmount(valor: number) {
+  return new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(valor);
+}
+
 /** Converte o valor digitado (`1.280,50` ou `1280.50`) em número. */
 export function parseAmount(value: string) {
   const texto = value.trim();

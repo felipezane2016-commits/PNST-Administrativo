@@ -2,6 +2,8 @@ import { abrirAnexo, apagarAnexo, guardarAnexo, pastaDoPrestador } from "@/_core
 import {
   anexosDoRecibo,
   competenciaOf,
+  formatAmount,
+  maskAmount,
   RECEIPT_CATEGORIES,
   validateReceiptDraft,
   type ArquivoAnexo,
@@ -40,7 +42,7 @@ function receiptToDraft(receipt: Receipt): ReceiptDraft {
     caseRef: receipt.caseRef,
     requester: receipt.requester,
     description: receipt.description,
-    amount: receipt.amount.toFixed(2).replace(".", ","),
+    amount: formatAmount(receipt.amount),
     anexos: anexosDoRecibo(receipt),
   };
 }
@@ -194,7 +196,7 @@ export default function ReceiptModal({
       onMouseDown={event => event.target === event.currentTarget && onClose()}
     >
       <div
-        className="modal-panel"
+        className="modal-panel modal-recibo"
         role="dialog"
         aria-modal="true"
         aria-labelledby="recibo-titulo"
@@ -202,13 +204,13 @@ export default function ReceiptModal({
         <div className="modal-panel-header">
           <div>
             <span className="eyebrow">
-              {receipt ? `${receipt.id} · ${receipt.status}` : "Informações do serviço"}
+              {receipt ? `${receipt.id} · ${receipt.status}` : "Novo lançamento"}
             </span>
             <h2 id="recibo-titulo">
               {receipt ? "Editar recibo" : "Novo recibo"}
             </h2>
             <p>
-              {descricao ?? (receipt ? "As alterações ficam registradas no histórico." : "O recibo começa como rascunho; ele vai para o escritório no envio do fechamento do mês.")}
+              {descricao ?? (receipt ? "As alterações ficam registradas no histórico." : "Começa como rascunho e vai para o escritório no envio do fechamento do mês.")}
             </p>
           </div>
           <button
@@ -222,120 +224,99 @@ export default function ReceiptModal({
         </div>
 
         <form className="modal-panel-body" onSubmit={handleSubmit} noValidate>
-          <div className="field-grid">
-            <Field
-              id="recibo-data"
-              label="Data do serviço *"
-              error={errors.serviceDate}
-            >
+          <fieldset className="form-secao">
+            <legend>Serviço</legend>
+            <div className="form-grade-3">
+              <Field id="recibo-data" label="Data do serviço *" error={errors.serviceDate}>
+                {aria => (
+                  <input
+                    {...aria}
+                    ref={firstFieldRef}
+                    className="field-input"
+                    type="date"
+                    value={draft.serviceDate}
+                    onChange={event => update("serviceDate", event.target.value)}
+                  />
+                )}
+              </Field>
+              <Field id="recibo-categoria" label="Categoria *">
+                {aria => (
+                  <select
+                    {...aria}
+                    className="field-input"
+                    value={draft.category}
+                    onChange={event => update("category", event.target.value)}
+                  >
+                    {(RECEIPT_CATEGORIES as readonly string[]).includes(draft.category) ? null : (
+                      <option value={draft.category}>{draft.category}</option>
+                    )}
+                    {RECEIPT_CATEGORIES.map(category => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </Field>
+              <Field id="recibo-valor" label="Valor *" error={errors.amount}>
+                {aria => (
+                  <span className="campo-moeda">
+                    <span className="campo-moeda-simbolo" aria-hidden="true">R$</span>
+                    <input
+                      {...aria}
+                      className="field-input"
+                      value={draft.amount}
+                      onChange={event => update("amount", maskAmount(event.target.value))}
+                      placeholder="0,00"
+                      inputMode="numeric"
+                      autoComplete="off"
+                    />
+                  </span>
+                )}
+              </Field>
+            </div>
+            <div className="field-grid">
+              <Field id="recibo-cliente" label="Cliente / Caso *" error={errors.client}>
+                {aria => (
+                  <input
+                    {...aria}
+                    className="field-input"
+                    value={draft.client}
+                    onChange={event => update("client", event.target.value)}
+                    placeholder="Ex.: Vertti Participações — Proc. 0021458-70"
+                  />
+                )}
+              </Field>
+              <Field id="recibo-solicitante" label="Solicitante">
+                {aria => (
+                  <input
+                    {...aria}
+                    className="field-input"
+                    value={draft.requester}
+                    onChange={event => update("requester", event.target.value)}
+                    placeholder="Quem pediu o serviço"
+                  />
+                )}
+              </Field>
+            </div>
+            <Field id="recibo-descricao" label="Descrição do serviço *" error={errors.description}>
               {aria => (
-                <input
+                <textarea
                   {...aria}
-                  ref={firstFieldRef}
                   className="field-input"
-                  type="date"
-                  value={draft.serviceDate}
-                  onChange={event => update("serviceDate", event.target.value)}
+                  rows={3}
+                  value={draft.description}
+                  onChange={event => update("description", event.target.value)}
+                  placeholder="O que foi feito, onde e para quê."
                 />
               )}
             </Field>
-            <Field id="recibo-categoria" label="Categoria *">
-              {aria => (
-                <select
-                  {...aria}
-                  className="field-input"
-                  value={draft.category}
-                  onChange={event => update("category", event.target.value)}
-                >
-                  {(RECEIPT_CATEGORIES as readonly string[]).includes(draft.category) ? null : (
-                    <option value={draft.category}>{draft.category}</option>
-                  )}
-                  {RECEIPT_CATEGORIES.map(category => (
-                    <option key={category} value={category}>
-                      {category}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </Field>
-          </div>
+          </fieldset>
 
-          <div className="field-grid">
-            <Field id="recibo-cliente" label="Cliente *" error={errors.client}>
-              {aria => (
-                <input
-                  {...aria}
-                  className="field-input"
-                  value={draft.client}
-                  onChange={event => update("client", event.target.value)}
-                  placeholder="Nome do cliente"
-                />
-              )}
-            </Field>
-            <Field
-              id="recibo-valor"
-              label="Valor (R$) *"
-              error={errors.amount}
-              hint="Aceita 1.280,50 ou 1280.50"
-            >
-              {aria => (
-                <input
-                  {...aria}
-                  className="field-input"
-                  value={draft.amount}
-                  onChange={event => update("amount", event.target.value)}
-                  placeholder="1.280,50"
-                  inputMode="decimal"
-                />
-              )}
-            </Field>
-          </div>
-
-          <div className="field-grid">
-            <Field id="recibo-caso" label="Caso / Projeto">
-              {aria => (
-                <input
-                  {...aria}
-                  className="field-input"
-                  value={draft.caseRef}
-                  onChange={event => update("caseRef", event.target.value)}
-                  placeholder="Número ou nome"
-                />
-              )}
-            </Field>
-            <Field id="recibo-solicitante" label="Solicitante">
-              {aria => (
-                <input
-                  {...aria}
-                  className="field-input"
-                  value={draft.requester}
-                  onChange={event => update("requester", event.target.value)}
-                  placeholder="Quem solicitou"
-                />
-              )}
-            </Field>
-          </div>
-
-          <Field
-            id="recibo-descricao"
-            label="Descrição detalhada *"
-            error={errors.description}
-          >
-            {aria => (
-              <textarea
-                {...aria}
-                className="field-input"
-                value={draft.description}
-                onChange={event => update("description", event.target.value)}
-                placeholder="Descreva o serviço executado..."
-              />
-            )}
-          </Field>
-
-          <div className="field-group">
-            <span className="field-label" id="recibo-anexo-rotulo">
-              Documentos (NF, boleto, comprovante...)
-            </span>
+          <fieldset className="form-secao">
+            <legend id="recibo-anexo-rotulo">
+              Documentos <span className="form-secao-dica">NF, boleto, comprovante — PDF, imagem, Word ou Excel</span>
+            </legend>
             {draft.anexos.length ? (
               <ul className="anexo-chips" aria-label="Documentos anexados">
                 {draft.anexos.map((arquivo, indice) => (
@@ -356,7 +337,7 @@ export default function ReceiptModal({
                 ))}
               </ul>
             ) : null}
-            <label className="upload-zone">
+            <label className="upload-zone upload-zone-compacta">
               <input
                 type="file"
                 multiple
@@ -365,9 +346,11 @@ export default function ReceiptModal({
                 disabled={Boolean(enviando)}
                 aria-labelledby="recibo-anexo-rotulo"
               />
-              <Upload size={19} strokeWidth={1.9} />
-              <strong>{enviando ? `Enviando ${enviando}…` : "Selecionar arquivos"}</strong>
-              <span>PDF, imagem, Word ou Excel — vários de uma vez, até 20 MB cada</span>
+              <Upload size={17} strokeWidth={1.9} />
+              <span className="upload-zone-texto">
+                <strong>{enviando ? `Enviando ${enviando}…` : "Selecionar arquivos"}</strong>
+                <span>Vários de uma vez, até 20 MB cada</span>
+              </span>
             </label>
             {erroArquivo ? (
               <span className="field-error" role="alert">
@@ -375,18 +358,17 @@ export default function ReceiptModal({
                 {erroArquivo}
               </span>
             ) : null}
-          </div>
+          </fieldset>
 
-          <div className="modal-panel-footer">
-            <button
-              type="button"
-              className="button-secondary"
-              onClick={onClose}
-            >
+          <div className="modal-panel-footer modal-recibo-rodape">
+            <span className="modal-recibo-total">
+              Total <strong>R$ {draft.amount || "0,00"}</strong>
+            </span>
+            <button type="button" className="button-secondary" onClick={onClose}>
               Cancelar
             </button>
             <button type="submit" className="button-primary" disabled={Boolean(enviando)}>
-              Salvar
+              {receipt ? "Salvar alterações" : "Salvar recibo"}
             </button>
           </div>
         </form>

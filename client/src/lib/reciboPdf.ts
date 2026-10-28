@@ -1,6 +1,7 @@
 import { abrirAbaDeEspera, baixarBlob, lerAnexo, mostrarPdf } from "@/_core/armazenamento/anexos";
 import { formatarData, formatarDataHora } from "@/_core/tempo";
 import { anexosDoRecibo, closingTotal, documentosDoFechamento, formatBRL, formatMonthTitle, type Closing, type Receipt } from "@/lib/portal";
+import { CATEGORIA_EN, traduzirParaIngles } from "@/lib/traducao";
 import type { RGB } from "pdf-lib";
 
 /**
@@ -86,6 +87,9 @@ const STATUS_EN: Record<string, string> = {
   Arquivado: "Archived",
 };
 
+/** "Cliente / Caso" num campo só (recibos antigos tinham o caso à parte). */
+const clienteCaso = (rec: Receipt) => [rec.client, rec.caseRef].filter((parte) => parte?.trim()).join(" — ");
+
 const agoraTexto = (idioma: Idioma) =>
   new Intl.DateTimeFormat(idioma === "en" ? "en-US" : "pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date());
 
@@ -115,8 +119,7 @@ function desenharRecibo(lib: Lib, doc: Doc, rec: Receipt, prestador: string, idi
   };
   campo(en ? "Service Provider" : "Prestador de Serviço", prestador);
   campo2(en ? "Service Date" : "Data do Serviço", formatarData(rec.serviceDate), en ? "Category" : "Categoria", rec.category);
-  campo2(en ? "Client" : "Cliente", rec.client, en ? "Case" : "Caso", rec.caseRef);
-  campo(en ? "Requested by" : "Solicitante", rec.requester);
+  campo2(en ? "Client / Case" : "Cliente / Caso", clienteCaso(rec), en ? "Requested by" : "Solicitante", rec.requester);
   p.texto(en ? "DESCRIPTION" : "DESCRIÇÃO", 15, y, 8, { cor: c.cinza });
   const linhas = p.paragrafo(rec.description || "—", 15, y + 6, 10, W - 30, c.grafite);
   y += 6 + linhas * 5 + 8;
@@ -154,8 +157,7 @@ function desenharNota(lib: Lib, doc: Doc, rec: Receipt, idioma: Idioma) {
     y += 14;
   };
   linha(pt ? "DATA" : "DATE / DATA", formatarData(rec.serviceDate));
-  linha(pt ? "CLIENTE" : "CLIENT / CLIENTE", rec.client);
-  linha(pt ? "CASO" : "CASE / CASO", rec.caseRef);
+  linha(pt ? "CLIENTE / CASO" : "CLIENT / CASE — CLIENTE / CASO", clienteCaso(rec));
   p.retangulo(15, y, W - 30, 22, c.grafite);
   p.texto(pt ? "VALOR TOTAL" : "TOTAL PAYMENT / VALOR TOTAL", 25, y + 8, 8, { negrito: true, cor: c.cinzaClaro });
   p.texto(formatBRL(rec.amount), 25, y + 18, 20, { negrito: true, cor: c.branco });
@@ -199,8 +201,16 @@ export async function gerarPdfRecibo(recibo: Receipt, nomePrestador: string) {
   return lib.paraBlob(doc.pdf);
 }
 
+/** O recibo com a descrição e a categoria em inglês. */
+async function emIngles(recibo: Receipt): Promise<Receipt> {
+  const descricao = await traduzirParaIngles(recibo.description);
+  return { ...recibo, description: descricao.texto, category: CATEGORIA_EN[recibo.category] ?? recibo.category };
+}
+
 /** Nota de despesas; unificada, vem depois do recibo. */
-export async function gerarNota(recibo: Receipt, nomePrestador: string, idioma: Idioma, unificar: boolean) {
+export async function gerarNota(original: Receipt, nomePrestador: string, idioma: Idioma, unificar: boolean) {
+  // Em inglês, a descrição do serviço também vai traduzida.
+  const recibo = idioma === "en" ? await emIngles(original) : original;
   const lib = await pdfLib();
   const doc = await lib.novoPdf(`${unificar ? "Unificado" : "Nota de despesas"} ${recibo.id}`);
   if (unificar) desenharRecibo(lib, doc, recibo, nomePrestador, idioma);

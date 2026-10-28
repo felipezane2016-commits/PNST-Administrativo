@@ -4,6 +4,8 @@ import {
   closingSent,
   type Closing,
   closingTotal,
+  formatAmount,
+  maskAmount,
   portalKpis,
   receiptSendAction,
   receiptsForClosing,
@@ -23,6 +25,7 @@ import {
   type ReceiptDraft,
 } from "../client/src/lib/portal";
 import { DEMO_RECEIPTS } from "../client/src/lib/portalSeed";
+import { pedacos } from "../client/src/lib/traducao";
 
 function receipt(
   id: string,
@@ -216,5 +219,30 @@ describe("Busca e filtro da lista", () => {
   it("combina busca, status, categoria e mês", () => {
     expect(filterReceipts(DEMO_RECEIPTS, { busca: "vertti", status: "Rascunho" }).map((item) => item.id)).toEqual(["REC-0148"]);
     expect(filterReceipts(DEMO_RECEIPTS, { competencia: "2026-05", categoria: "Custas" }).map((item) => item.id)).toEqual(["REC-0139"]);
+  });
+});
+
+describe("Valor em formato contábil", () => {
+  it("os dígitos viram centavos com milhar e duas casas", () => {
+    expect(maskAmount("5")).toBe("0,05");
+    expect(maskAmount("128050")).toBe("1.280,50");
+    expect(maskAmount("R$ 1.280,5")).toBe("128,05");
+    expect(maskAmount("0001")).toBe("0,01");
+    expect(maskAmount("abc")).toBe("");
+    expect(parseAmount(maskAmount("123456789"))).toBe(1234567.89);
+  });
+
+  it("mostra o valor gravado no mesmo formato", () => {
+    expect(formatAmount(2000)).toBe("2.000,00");
+  });
+});
+
+describe("Tradução da descrição", () => {
+  it("divide textos longos em pedaços que o serviço aceita", () => {
+    const longo = Array.from({ length: 80 }, (_, i) => `Frase número ${i} do serviço.`).join(" ");
+    const partes = pedacos(longo);
+    expect(partes.length).toBeGreaterThan(1);
+    expect(partes.every((parte) => parte.length <= 450)).toBe(true);
+    expect(partes.join(" ")).toBe(longo);
   });
 });

@@ -18,8 +18,8 @@ export function DetalhesRecibo({ recibo }: { recibo: Receipt }) {
   return (
     <dl className="data-list data-list-recibo">
       <div>
-        <dt>Cliente</dt>
-        <dd>{recibo.client || "—"}</dd>
+        <dt>Cliente / Caso</dt>
+        <dd>{[recibo.client, recibo.caseRef].filter((parte) => parte?.trim()).join(" — ") || "—"}</dd>
       </div>
       <div>
         <dt>Categoria</dt>
@@ -32,10 +32,6 @@ export function DetalhesRecibo({ recibo }: { recibo: Receipt }) {
       <div>
         <dt>Valor</dt>
         <dd className="money">{formatBRL(recibo.amount)}</dd>
-      </div>
-      <div>
-        <dt>Caso / Projeto</dt>
-        <dd>{recibo.caseRef || "—"}</dd>
       </div>
       <div>
         <dt>Solicitante</dt>
@@ -167,7 +163,7 @@ export function EscolherNota({ recibo, nomePrestador, aoFechar }: { recibo: Rece
         {botao("pt", true, "PT Unificado")}
         {botao("en", true, "EN Unificado")}
       </div>
-      <p className="field-hint espaco-acima">Em inglês, os rótulos e o status são traduzidos; a descrição e o solicitante saem como o prestador escreveu.</p>
+      <p className="field-hint espaco-acima">Em inglês, a descrição do serviço é traduzida automaticamente (serviço de tradução MyMemory). Se ele não responder, ela sai em português.</p>
     </Painel>
   );
 }
