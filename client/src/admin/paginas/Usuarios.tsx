@@ -134,7 +134,7 @@ type Erros = Partial<Record<"nome" | "email" | "senha" | "modulos" | "papel", st
 
 function FormularioUsuario({ usuario, todos, euId, aoFechar }: { usuario: Usuario | null; todos: Usuario[]; euId: string; aoFechar: () => void }) {
   const [dados, setDados] = useState<Usuario>(
-    usuario ?? { id: gerarId("usr"), nome: "", email: "", senha: "", departamento: "Operações", papel: "operador", modulos: ["visao"], ativo: true, ultimoAcesso: null },
+    usuario ?? { id: gerarId("usr"), nome: "", email: "", senha: "", departamento: "Operações", papel: "operador", modulos: ["visao", "pagamentos"], ativo: true, ultimoAcesso: null },
   );
   const [novaSenha, setNovaSenha] = useState("");
   const [erros, setErros] = useState<Erros>({});

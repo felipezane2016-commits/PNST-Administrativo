@@ -19,6 +19,7 @@ export type Modulo =
   | "calendario"
   | "documentos"
   | "prestadores"
+  | "pagamentos"
   | "contas";
 
 export const MODULOS: Record<Modulo, string> = {
@@ -26,6 +27,7 @@ export const MODULOS: Record<Modulo, string> = {
   calendario: "Calendário",
   documentos: "Documentos",
   prestadores: "Prestadores",
+  pagamentos: "Pagamentos",
   contas: "Account Management",
 };
 
@@ -42,7 +44,7 @@ export type Area = "prestadores" | "pagamentos" | "contas" | "calendario" | "doc
 
 export const AREAS: Record<Area, { nome: string; modulo: Modulo | null }> = {
   prestadores: { nome: "Prestadores", modulo: "prestadores" },
-  pagamentos: { nome: "Pagamentos", modulo: null },
+  pagamentos: { nome: "Pagamentos", modulo: "pagamentos" },
   contas: { nome: "Account Management", modulo: "contas" },
   calendario: { nome: "Calendário", modulo: "calendario" },
   documentos: { nome: "Documentos", modulo: "documentos" },

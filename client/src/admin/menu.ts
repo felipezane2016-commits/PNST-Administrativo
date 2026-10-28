@@ -59,7 +59,7 @@ export const MENU_ESCRITORIO: Grupo[] = [
       { rota: "/prestadores", rotulo: "Prestadores", icone: Truck, modulo: "prestadores", contador: "conferencia" },
       { rota: "/contas", rotulo: "Account Management", icone: Landmark, modulo: "contas", contador: "contas" },
       // Quem pede pagamento sem ter o Account Management (outras áreas) entra por aqui.
-      { rota: "/contas/pagamentos", rotulo: "Pagamentos", icone: Wallet, ocultarCom: "contas", contador: "pagamentos" },
+      { rota: "/contas/pagamentos", rotulo: "Pagamentos", icone: Wallet, modulo: "pagamentos", ocultarCom: "contas", contador: "pagamentos" },
     ],
   },
   {
@@ -108,10 +108,10 @@ export const MENUS_MODULO: MenuModulo[] = [
         // (as próprias páginas e o banco decidem o que cada um vê e faz).
         rotulo: "Pagamentos",
         itens: [
-          { rota: "/contas/pagamentos", rotulo: "Pagamentos", icone: Wallet, contador: "pagamentos" },
-          { rota: "/contas/pagamentos/aprovacoes", rotulo: "Aprovações", icone: ShieldCheck, contador: "aprovacoes" },
-          { rota: "/contas/pagamentos/fornecedores", rotulo: "Fornecedores", icone: Building2 },
-          { rota: "/contas/pagamentos/regras", rotulo: "Regras de aprovação", icone: Settings2 },
+          { rota: "/contas/pagamentos", rotulo: "Pagamentos", icone: Wallet, contador: "pagamentos", modulo: "pagamentos" },
+          { rota: "/contas/pagamentos/aprovacoes", rotulo: "Aprovações", icone: ShieldCheck, contador: "aprovacoes", modulo: "pagamentos" },
+          { rota: "/contas/pagamentos/fornecedores", rotulo: "Fornecedores", icone: Building2, modulo: "pagamentos" },
+          { rota: "/contas/pagamentos/regras", rotulo: "Regras de aprovação", icone: Settings2, modulo: "pagamentos" },
         ],
       },
       {
@@ -158,8 +158,9 @@ export function moduloDaRota(caminho: string): Modulo | null {
     ["/contas", "contas"],
   ];
   if (caminho === "/") return "visao";
-  // Pagamentos vive no Account Management, mas qualquer pessoa da equipe pede.
-  if (casa(caminho, "/contas/pagamentos")) return null;
+  // Pagamentos vive no Account Management, mas é uma área própria: quem tem
+  // Pagamentos sem o Account Management também entra.
+  if (casa(caminho, "/contas/pagamentos")) return "pagamentos";
   return mapa.find(([prefixo]) => casa(caminho, prefixo))?.[1] ?? null;
 }
 

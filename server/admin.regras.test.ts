@@ -140,9 +140,11 @@ describe("Permissões", () => {
     expect(pode(usuario("viewer", tudo), "prestadores.conferencia.conferir")).toBe(false);
     expect(pode(usuario("viewer", tudo), "prestadores.conferencia.ver")).toBe(true);
     // Financeiro = edita e tem o Account Management.
-    expect(pode(usuario("operador", ["contas"]), "pagamentos.pagar")).toBe(true);
-    expect(pode(usuario("operador", ["prestadores"]), "pagamentos.pagar")).toBe(false);
-    expect(pode(usuario("viewer", []), "pagamentos.pedir")).toBe(true);
+    expect(pode(usuario("operador", ["contas", "pagamentos"]), "pagamentos.pagar")).toBe(true);
+    expect(pode(usuario("operador", ["prestadores", "pagamentos"]), "pagamentos.pagar")).toBe(false);
+    expect(pode(usuario("viewer", ["pagamentos"]), "pagamentos.pedir")).toBe(true);
+    // Sem a área Pagamentos, nada de pagamentos.
+    expect(pode(usuario("admin", ["contas"]), "pagamentos.pedir")).toBe(false);
     expect(pode(usuario("gestor", tudo), "pagamentos.regras")).toBe(false);
   });
 
