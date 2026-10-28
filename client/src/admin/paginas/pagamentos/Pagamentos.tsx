@@ -7,11 +7,12 @@ import Kpi from "@/admin/componentes/Kpi";
 import Vazio from "@/admin/componentes/Vazio";
 import { formatBRL } from "@/lib/portal";
 import { useDadosPagamentos } from "@/modulos/pagamentos/colecoes";
-import { alertasDePagamentos, aprovadorVigente, diasAte, ehFinanceiro, visiveisPara } from "@/modulos/pagamentos/regras";
+import { alertasDePagamentos, aprovadorVigente, diasAte, ehFinanceiro, podeExcluirPagamento, visiveisPara } from "@/modulos/pagamentos/regras";
 import { STATUS_PAGAMENTO, type StatusPagamento } from "@/modulos/pagamentos/tipos";
-import { CheckCircle2, ClipboardCheck, Plus, Search, SearchX, ShieldCheck, Wallet } from "lucide-react";
+import { CheckCircle2, ClipboardCheck, Plus, Search, SearchX, ShieldCheck, Trash2, Wallet } from "lucide-react";
 import { useState } from "react";
 import { SeloStatus } from "./comum";
+import ExcluirPagamento from "./ExcluirPagamento";
 import FichaPagamento from "./FichaPagamento";
 import FormularioPagamento from "./FormularioPagamento";
 
@@ -25,6 +26,7 @@ export default function Pagamentos() {
   const [filtro, setFiltro] = useState<Filtro>("Em aberto");
   const [busca, setBusca] = useState("");
   const [aberto, setAberto] = useState<string | null>(null);
+  const [excluindoId, setExcluindoId] = useState<string | null>(null);
   const [formulario, setFormulario] = useState<{ devolvidoId: string | null } | null>(null);
   if (!usuario) return null;
 
@@ -40,6 +42,7 @@ export default function Pagamentos() {
   const soma = (status: StatusPagamento) => visiveis.filter((p) => p.status === status);
   const pagosMes = visiveis.filter((p) => p.status === "Pago" && p.pagamento?.data.startsWith(HOJE.slice(0, 7)));
   const selecionado = visiveis.find((p) => p.id === aberto) ?? null;
+  const excluindo = visiveis.find((p) => p.id === excluindoId) ?? null;
   const devolvido = formulario?.devolvidoId ? (visiveis.find((p) => p.id === formulario.devolvidoId) ?? null) : null;
 
   return (
@@ -113,6 +116,9 @@ export default function Pagamentos() {
                   <th>Vencimento</th>
                   <th>Valor</th>
                   <th>Situação</th>
+                  <th>
+                    <span className="sr-only">Ações</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -146,6 +152,22 @@ export default function Pagamentos() {
                       <td>
                         <SeloStatus status={p.status} />
                       </td>
+                      <td>
+                        {podeExcluirPagamento(usuario, p).ok ? (
+                          <button
+                            type="button"
+                            className="icon-button icon-button-pequeno icon-button-danger"
+                            aria-label={`Excluir ${p.numero}`}
+                            title="Excluir pedido"
+                            onClick={(evento) => {
+                              evento.stopPropagation();
+                              setExcluindoId(p.id);
+                            }}
+                          >
+                            <Trash2 size={14} strokeWidth={1.9} />
+                          </button>
+                        ) : null}
+                      </td>
                     </tr>
                   );
                 })}
@@ -155,8 +177,25 @@ export default function Pagamentos() {
         )}
       </section>
 
-      {selecionado && !formulario ? (
-        <FichaPagamento pagamento={selecionado} usuario={usuario} aoFechar={() => setAberto(null)} aoCorrigir={() => setFormulario({ devolvidoId: selecionado.id })} />
+      {selecionado && !formulario && !excluindoId ? (
+        <FichaPagamento
+          pagamento={selecionado}
+          usuario={usuario}
+          aoFechar={() => setAberto(null)}
+          aoCorrigir={() => setFormulario({ devolvidoId: selecionado.id })}
+          aoExcluir={() => setExcluindoId(selecionado.id)}
+        />
+      ) : null}
+      {excluindo ? (
+        <ExcluirPagamento
+          pagamento={excluindo}
+          usuario={usuario}
+          aoFechar={() => setExcluindoId(null)}
+          aoExcluir={() => {
+            setExcluindoId(null);
+            setAberto(null);
+          }}
+        />
       ) : null}
       {formulario ? (
         <FormularioPagamento

@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { Usuario } from "../client/src/_core/identidade/permissoes";
 import { USUARIOS_DEMO } from "../client/src/_core/identidade/sessao";
 import { razao } from "../client/src/modulos/conciliacao/colecoes";
-import { aprovar, conferir, devolver, registrarPagamento, reenviar, salvarFornecedor, solicitarDoLote, solicitarPagamento, type Pedido } from "../client/src/modulos/pagamentos/acoes";
+import { aprovar, conferir, devolver, excluirPagamento, registrarPagamento, reenviar, salvarFornecedor, solicitarDoLote, solicitarPagamento, type Pedido } from "../client/src/modulos/pagamentos/acoes";
 import { configAprovacao, fornecedores, pagamentos } from "../client/src/modulos/pagamentos/colecoes";
 import { CONFIG_APROVACAO_DEMO, PAGAMENTOS_DEMO } from "../client/src/modulos/pagamentos/dadosMock";
 import {
+  podeExcluirPagamento,
   alertasDePagamentos,
   aprovadorVigente,
   podeAprovar,
@@ -163,5 +164,21 @@ describe("fluxo completo pelas ações", () => {
     const depois = montarLotes(recibos.ler(), fechamentos.ler(), prestadores.ler()).find((l) => l.chave === lote.chave)!;
     expect(depois.situacao).toBe("Pago");
     expect(razao.ler().filter((r) => r.origemId === `${lote.prestador.id}|${lote.competencia}`)).toHaveLength(1);
+  });
+});
+
+describe("excluir pedido", () => {
+  it("gestor e administrador excluem; operador não; pago nunca", () => {
+    expect(podeExcluirPagamento(felipe, em("Em conferência")).ok).toBe(true);
+    expect(podeExcluirPagamento(ricardo, em("Cancelado")).ok).toBe(true);
+    expect(podeExcluirPagamento(helena, em("Em conferência")).ok).toBe(false);
+    expect(podeExcluirPagamento(felipe, em("Pago"))).toMatchObject({ ok: false, motivo: expect.stringMatching(/já pago/) });
+  });
+
+  it("some da lista pela ação", () => {
+    pagamentos.atualizar(() => [em("Reprovado", { id: "pg-x" })]);
+    expect(excluirPagamento("pg-x", helena)).toMatch(/permissão/);
+    expect(excluirPagamento("pg-x", felipe)).toBeNull();
+    expect(pagamentos.ler().some((p) => p.id === "pg-x")).toBe(false);
   });
 });

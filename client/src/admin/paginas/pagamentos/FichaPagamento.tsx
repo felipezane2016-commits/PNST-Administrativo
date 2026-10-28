@@ -8,9 +8,9 @@ import { formatBRL } from "@/lib/portal";
 import { useDadosConciliacao } from "@/modulos/conciliacao/colecoes";
 import { aprovar, cancelar, conferir, devolver, registrarPagamento, reprovar } from "@/modulos/pagamentos/acoes";
 import { useDadosPagamentos } from "@/modulos/pagamentos/colecoes";
-import { diasAte, podeAprovar, podeCancelar, podeConferir, podeCorrigir, podePagar, quemAprova } from "@/modulos/pagamentos/regras";
+import { diasAte, podeAprovar, podeCancelar, podeExcluirPagamento, podeConferir, podeCorrigir, podePagar, quemAprova } from "@/modulos/pagamentos/regras";
 import type { AnexoRef, Pagamento } from "@/modulos/pagamentos/tipos";
-import { AlertTriangle, Ban, Check, CornerUpLeft, Pencil, ShieldCheck, Wallet, X } from "lucide-react";
+import { AlertTriangle, Ban, Check, CornerUpLeft, Pencil, ShieldCheck, Wallet, X, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { LinkDocumento, SeloStatus } from "./comum";
 
@@ -21,7 +21,7 @@ const PASSOS: { rotulo: string; feito: (p: Pagamento) => string | null }[] = [
   { rotulo: "Pago", feito: (p) => (p.pagamento ? `${p.pagamento.por} · ${formatarData(p.pagamento.data)}` : null) },
 ];
 
-export default function FichaPagamento({ pagamento, usuario, aoFechar, aoCorrigir }: { pagamento: Pagamento; usuario: Usuario; aoFechar: () => void; aoCorrigir: () => void }) {
+export default function FichaPagamento({ pagamento, usuario, aoFechar, aoCorrigir, aoExcluir }: { pagamento: Pagamento; usuario: Usuario; aoFechar: () => void; aoCorrigir: () => void; aoExcluir?: () => void }) {
   const { config, fornecedores } = useDadosPagamentos();
   const pessoas = useColecao(usuarios);
   const fornecedor = fornecedores.find((f) => f.id === pagamento.fornecedorId) ?? null;
@@ -53,6 +53,11 @@ export default function FichaPagamento({ pagamento, usuario, aoFechar, aoCorrigi
             </button>
           ) : null}
           {podeCancelar(usuario, pagamento) ? <BotaoCancelar pagamento={pagamento} usuario={usuario} aoResultado={resultado} /> : null}
+          {aoExcluir && podeExcluirPagamento(usuario, pagamento).ok ? (
+            <button type="button" className="text-button text-button-perigo" onClick={aoExcluir}>
+              <Trash2 size={14} strokeWidth={2} /> Excluir pedido
+            </button>
+          ) : null}
         </div>
       }
     >

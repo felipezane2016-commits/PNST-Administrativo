@@ -68,6 +68,7 @@ export const ACOES = {
   "pagamentos.conferir": { area: "pagamentos", nome: "Conferir pedidos (financeiro)", nivel: "financeiro" },
   "pagamentos.aprovar": { area: "pagamentos", nome: "Aprovar pedidos (segue a hierarquia)", nivel: "todos" },
   "pagamentos.pagar": { area: "pagamentos", nome: "Registrar o pagamento", nivel: "financeiro" },
+  "pagamentos.excluir": { area: "pagamentos", nome: "Excluir pedidos (menos os já pagos)", nivel: "excluir" },
   "pagamentos.fornecedores": { area: "pagamentos", nome: "Cadastrar fornecedores e dados bancários", nivel: "gestao" },
   "pagamentos.regras": { area: "pagamentos", nome: "Alterar as regras de aprovação", nivel: "admin" },
 

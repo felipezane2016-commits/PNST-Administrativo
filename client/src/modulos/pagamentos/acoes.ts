@@ -1,3 +1,4 @@
+import { apagarAnexo } from "@/_core/armazenamento/anexos";
 import { gravarItem } from "@/_core/armazenamento/colecao";
 import { usuarios } from "@/_core/identidade/sessao";
 import type { Usuario } from "@/_core/identidade/permissoes";
@@ -8,7 +9,7 @@ import { notificar } from "@/modulos/notificacoes/colecao";
 import { marcarPago } from "@/modulos/prestadores/acoes";
 import type { Lote } from "@/modulos/prestadores/regras";
 import { configAprovacao, fornecedores, pagamentos } from "./colecoes";
-import { contrapartidaDa, dadosBancariosMudaram, podeAprovar, quemAprova, podeCancelar, podeConferir, podeCorrigir, podePagar, proximoNumero, type Resposta } from "./regras";
+import { contrapartidaDa, dadosBancariosMudaram, podeExcluirPagamento, podeAprovar, quemAprova, podeCancelar, podeConferir, podeCorrigir, podePagar, proximoNumero, type Resposta } from "./regras";
 import type { AnexoRef, ConfigAprovacao, Fornecedor, Pagamento } from "./tipos";
 
 /**
@@ -166,6 +167,17 @@ export function cancelar(id: string, motivo: string, usuario: Usuario): string |
   if (!pagamento || !podeCancelar(usuario, pagamento)) return "Só quem pediu ou o financeiro cancela, e só antes do pagamento.";
   if (!motivo.trim()) return "Diga por que o pedido foi cancelado.";
   alterar(id, usuario.nome, `Cancelado: ${motivo.trim()}`, () => ({ status: "Cancelado", motivo: motivo.trim() }));
+  return null;
+}
+
+/** Exclui o pedido (e os documentos anexados). Pedido pago não sai: está no razão. */
+export function excluirPagamento(id: string, usuario: Usuario): string | null {
+  const pagamento = achar(id);
+  if (!pagamento) return "Pagamento não encontrado.";
+  const erro = recusa(podeExcluirPagamento(usuario, pagamento));
+  if (erro) return erro;
+  pagamentos.atualizar((lista) => lista.filter((p) => p.id !== id));
+  pagamento.documentos.forEach((documento) => documento.anexoId && void apagarAnexo(documento.anexoId));
   return null;
 }
 

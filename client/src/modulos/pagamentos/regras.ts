@@ -84,6 +84,13 @@ export function podePagar(usuario: Usuario | null, pagamento: Pagamento): Respos
   return sim;
 }
 
+/** Excluir de vez: quem tem a permissão, e nunca o que já foi pago (está no razão). */
+export function podeExcluirPagamento(usuario: Usuario | null, pagamento: Pagamento): Resposta {
+  if (pagamento.status === "Pago") return nao("Pedido já pago: fica no histórico e no razão da conciliação, não pode ser excluído.");
+  if (!pode(usuario, "pagamentos.excluir")) return nao("Você não tem permissão para excluir pedidos de pagamento.");
+  return sim;
+}
+
 /** O pedido volta para quem pediu quando devolvido; cancela-se o que ainda não foi pago. */
 export function podeCorrigir(usuario: Usuario | null, pagamento: Pagamento) {
   return Boolean(usuario && pagamento.status === "Devolvido" && (usuario.id === pagamento.solicitanteId || ehFinanceiro(usuario)));
