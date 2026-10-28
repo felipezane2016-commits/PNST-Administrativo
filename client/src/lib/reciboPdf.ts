@@ -296,35 +296,55 @@ export async function gerarRelatorioMensal(itens: Receipt[], nomePrestador: stri
     p.texto(valor, x + kpiW / 2, y + 13, 11, { negrito: true, cor: c.branco, alinhar: "centro" });
   });
   y += 24;
+  // Colunas dentro da margem (15 a 195 mm); textos longos quebram em várias
+  // linhas e a linha da tabela cresce — nada é cortado.
+  const colunas = {
+    data: { x: 17, largura: 18 },
+    cliente: { x: 36, largura: 40 },
+    categoria: { x: 78, largura: 22 },
+    descricao: { x: 102, largura: 50 },
+    valor: { direita: 174 },
+    status: { x: 176, largura: 18 },
+  };
+  const ALTURA_LINHA = 3.6;
+  const quebrar = (texto: string, largura: number, tamanho = 7.5) => lib.quebrarLinhas(doc.fontes.normal, texto || "—", tamanho, largura * MM);
   const cabecalho = () => {
     p.retangulo(15, y, W - 30, 7, c.grafiteEscuro);
     (
       [
-        [17, "DATA"],
-        [40, "CLIENTE"],
-        [79, "CATEGORIA"],
-        [110, "DESCRIÇÃO"],
-        [166, "VALOR"],
-        [189, "STATUS"],
+        [colunas.data.x, "DATA"],
+        [colunas.cliente.x, "CLIENTE / CASO"],
+        [colunas.categoria.x, "CATEGORIA"],
+        [colunas.descricao.x, "DESCRIÇÃO"],
+        [colunas.status.x, "STATUS"],
       ] as const
     ).forEach(([x, rotulo]) => p.texto(rotulo, x, y + 4.5, 7, { negrito: true, cor: c.branco }));
+    p.texto("VALOR", colunas.valor.direita, y + 4.5, 7, { negrito: true, cor: c.branco, alinhar: "direita" });
     y += 7;
   };
   cabecalho();
   ordenados.forEach((recibo, i) => {
-    if (y > 270) {
+    const cliente = quebrar([recibo.client, recibo.caseRef].filter((parte) => parte?.trim()).join(" — "), colunas.cliente.largura);
+    const categoria = quebrar(recibo.category, colunas.categoria.largura);
+    const descricao = quebrar(recibo.description, colunas.descricao.largura);
+    const status = quebrar(recibo.status.toUpperCase(), colunas.status.largura, 6.5);
+    const altura = Math.max(10, Math.max(cliente.length, categoria.length, descricao.length, status.length) * ALTURA_LINHA + 5);
+    if (y + altura > 272) {
       p = prancheta(lib, doc);
       y = 15;
       cabecalho();
     }
-    p.retangulo(15, y, W - 30, 10, i % 2 === 0 ? c.zebra : c.branco);
-    p.texto(formatarData(recibo.serviceDate), 17, y + 6.5, 7.5, { cor: c.grafite });
-    p.texto(recibo.client || "—", 40, y + 6.5, 7.5, { cor: c.grafite, largura: 37 });
-    p.texto(recibo.category || "—", 79, y + 6.5, 7.5, { cor: c.grafite, largura: 29 });
-    p.texto(recibo.description || "—", 110, y + 6.5, 7.5, { cor: c.grafite, largura: 54 });
-    p.texto(formatBRL(recibo.amount), 187, y + 6.5, 7.5, { negrito: true, cor: c.grafite, alinhar: "direita" });
-    p.texto(recibo.status.toUpperCase(), 189, y + 6.5, 6, { cor: c.grafite, largura: 18 });
-    y += 10;
+    p.retangulo(15, y, W - 30, altura, i % 2 === 0 ? c.zebra : c.branco);
+    const topo = y + 5.5;
+    const escrever = (linhas: string[], x: number, tamanho = 7.5) =>
+      linhas.forEach((linha, n) => p.texto(linha, x, topo + n * ALTURA_LINHA, tamanho, { cor: c.grafite }));
+    p.texto(formatarData(recibo.serviceDate), colunas.data.x, topo, 7.5, { cor: c.grafite });
+    escrever(cliente, colunas.cliente.x);
+    escrever(categoria, colunas.categoria.x);
+    escrever(descricao, colunas.descricao.x);
+    p.texto(formatBRL(recibo.amount), colunas.valor.direita, topo, 7.5, { negrito: true, cor: c.grafite, alinhar: "direita" });
+    escrever(status, colunas.status.x, 6.5);
+    y += altura;
   });
   if (y > 250) {
     p = prancheta(lib, doc);
@@ -333,7 +353,7 @@ export async function gerarRelatorioMensal(itens: Receipt[], nomePrestador: stri
   y += 2;
   p.retangulo(15, y, W - 30, 10, c.grafiteEscuro);
   p.texto("TOTAL GERAL", 17, y + 6.5, 8, { negrito: true, cor: c.branco });
-  p.texto(formatBRL(total), 187, y + 6.5, 8, { negrito: true, cor: c.branco, alinhar: "direita" });
+  p.texto(formatBRL(total), 174, y + 6.5, 8, { negrito: true, cor: c.branco, alinhar: "direita" });
   y += 26;
   p.linha(15, y, 95, c.grafiteEscuro, 0.4);
   p.linha(115, y, W - 15, c.grafiteEscuro, 0.4);

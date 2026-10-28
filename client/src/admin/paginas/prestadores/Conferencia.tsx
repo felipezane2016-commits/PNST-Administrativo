@@ -31,6 +31,9 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import { BotaoAnexo, BotaoLotePdf, CartaoRecibo, ConfirmarExclusaoRecibo, ListaDocumentos } from "./ReciboDetalhe";
 
+/** A pasta do prestador no mês do lote, na página Arquivos. */
+const pastaDoLote = (lote: Lote) => `/prestadores/arquivos?prestador=${encodeURIComponent(lote.prestador.id)}&mes=${lote.competencia}`;
+
 const TOM_SITUACAO: Record<SituacaoLote, Tom> = {
   "Aguardando conferência": "amber",
   "Em conferência": "blue",
@@ -75,7 +78,7 @@ export default function Conferencia() {
       const anexo = await guardarAnexo(new File([blob], nome, { type: "application/pdf" }), pastaDoPrestador(lote.prestador.id, lote.competencia));
       guardarDocumentoUnico(lote.prestador.id, lote.competencia, { id: anexo.id, nome, tipo: "application/pdf", tamanho: blob.size }, autor);
       setAviso(`Documento único gerado — ${lote.prestador.nome} · ${formatMonthTitle(lote.competencia)}.`);
-      setTimeout(() => navegar("/prestadores/arquivos"), 1500);
+      setTimeout(() => navegar(pastaDoLote(lote)), 1500);
     } catch {
       setAviso("Conferência finalizada, mas não foi possível gerar o documento único. Gere de novo pelo botão do lote.");
     }
@@ -433,7 +436,7 @@ function GavetaLote({
               <BotaoAnexo id={lote.fechamento.documentoUnico.id} nome={lote.fechamento.documentoUnico.nome} rotulo={lote.fechamento.documentoUnico.nome} />
             ) : null}
             <BotaoLotePdf recibos={lote.recibos} nomePrestador={lote.prestador.nome} competencia={lote.competencia} fechamento={lote.fechamento} />
-            <button type="button" className="text-button" onClick={() => navegar("/prestadores/arquivos")}>
+            <button type="button" className="text-button" onClick={() => navegar(pastaDoLote(lote))}>
               <FolderOpen size={13} strokeWidth={2} /> Arquivos
             </button>
           </dd>
