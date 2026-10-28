@@ -2,7 +2,7 @@ import { gravarItem } from "@/_core/armazenamento/colecao";
 import { usuarios } from "@/_core/identidade/sessao";
 import type { Usuario } from "@/_core/identidade/permissoes";
 import { gerarId, HOJE } from "@/_core/tempo";
-import { formatBRL, formatMonth } from "@/lib/portal";
+import { documentosDoFechamento, formatBRL, formatMonth } from "@/lib/portal";
 import { contasBancarias, razao } from "@/modulos/conciliacao/colecoes";
 import { notificar } from "@/modulos/notificacoes/colecao";
 import { marcarPago } from "@/modulos/prestadores/acoes";
@@ -154,7 +154,7 @@ export function registrarPagamento(id: string, dados: { data: string; contaId: s
   }
   if (pagamento.origem === "Prestadores" && pagamento.origemId) {
     const [prestadorId, competencia] = pagamento.origemId.split("|");
-    marcarPago(prestadorId, competencia);
+    marcarPago(prestadorId, competencia, usuario.nome);
   }
   notificar({ tipo: "sucesso", titulo: "Pagamento realizado", corpo: rotulo(pagamento), destino: "/contas/pagamentos" });
   return null;
@@ -190,7 +190,9 @@ export function solicitarDoLote(lote: Lote, usuario: Usuario): Pagamento | null 
     reembolsavel: false,
     urgente: false,
     justificativaUrgencia: "",
-    documentos: [{ anexoId: null, nome: lote.fechamento?.documentName ?? `Fechamento ${lote.competencia}.pdf` }],
+    documentos: documentosDoFechamento(lote.fechamento).length
+      ? documentosDoFechamento(lote.fechamento).map((documento) => ({ anexoId: documento.id, nome: documento.nome }))
+      : [{ anexoId: lote.fechamento.documentoUnico?.id ?? null, nome: lote.fechamento.documentoUnico?.nome ?? `Fechamento ${lote.competencia}.pdf` }],
     status: "Aguardando aprovação",
     solicitanteId: usuario.id,
     solicitante: usuario.nome,

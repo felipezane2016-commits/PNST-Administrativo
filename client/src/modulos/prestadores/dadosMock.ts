@@ -1,4 +1,4 @@
-import type { Closing, Receipt } from "@/lib/portal";
+import { closingTotal, type Closing, type Receipt, type RegistroRecibo } from "@/lib/portal";
 import { DEMO_CLOSINGS, DEMO_CREDENTIALS, DEMO_PROVIDER, DEMO_RECEIPTS, MARINA_ID } from "@/lib/portalSeed";
 import type { Prestador } from "./tipos";
 
@@ -107,7 +107,7 @@ const OUTROS_RECIBOS: Receipt[] = [
 
   // Ofício Central — cartório: junho com rascunho e recibo avulso enviado.
   recibo({ id: "REC-0117", prestadorId: "prest-oficio", serviceDate: "2026-05-14", category: "Cartório", client: "Grupo Sanches Alimentos", description: "Reconhecimento de firma por autenticidade (6 assinaturas).", amount: 214.8, status: "Aprovado", createdAt: "2026-05-14T12:00:00.000Z" }),
-  recibo({ id: "REC-0130", prestadorId: "prest-oficio", serviceDate: "2026-06-11", category: "Cartório", client: "Meridiano Logística", description: "Autenticação de cópias de contrato social.", amount: 158.4, status: "Enviado", createdAt: "2026-06-11T12:00:00.000Z" }),
+  recibo({ id: "REC-0130", prestadorId: "prest-oficio", serviceDate: "2026-06-11", category: "Cartório", client: "Meridiano Logística", description: "Autenticação de cópias de contrato social.", amount: 158.4, status: "Pendente de envio", createdAt: "2026-06-11T12:00:00.000Z" }),
   recibo({ id: "REC-0131", prestadorId: "prest-oficio", serviceDate: "2026-06-24", category: "Cartório", client: "Vertti Participações", description: "Escritura de procuração pública.", amount: 389, status: "Rascunho", attachmentName: null, createdAt: "2026-06-24T12:00:00.000Z" }),
 
   // Agência Postal — correio: só abril e maio, portal desativado.
@@ -115,16 +115,20 @@ const OUTROS_RECIBOS: Receipt[] = [
   recibo({ id: "REC-0118", prestadorId: "prest-postal", serviceDate: "2026-05-21", category: "Postagem", client: "Meridiano Logística", description: "Sedex 10 para Curitiba e Porto Alegre.", amount: 174.5, status: "Aprovado", createdAt: "2026-05-21T12:00:00.000Z" }),
 ];
 
-export const RECIBOS_DEMO: Receipt[] = [...DEMO_RECEIPTS, ...OUTROS_RECIBOS];
+const TODOS_RECIBOS: Receipt[] = [...DEMO_RECEIPTS, ...OUTROS_RECIBOS];
 
 function fechamento(prestadorId: string, competencia: string, review: Closing["review"], enviadoEm: string): Closing {
+  const doLote = TODOS_RECIBOS.filter((item) => item.prestadorId === prestadorId && item.competencia === competencia && item.status !== "Rascunho");
   return {
     prestadorId,
     competencia,
-    documentName: `nf-${competencia}.pdf`,
+    documentos: [{ id: null, nome: `nf-${competencia}.pdf` }],
     submitted: true,
     submittedAt: enviadoEm,
     review,
+    reciboIds: doLote.map((item) => item.id),
+    valorTotal: closingTotal(doLote),
+    paidAt: review === "Pago" ? enviadoEm.slice(0, 10) : null,
   };
 }
 
@@ -138,4 +142,16 @@ export const FECHAMENTOS_DEMO: Closing[] = [
   fechamento("prest-oficio", "2026-05", "Pago", "2026-06-03T15:00:00.000Z"),
   fechamento("prest-postal", "2026-04", "Pago", "2026-05-04T15:00:00.000Z"),
   fechamento("prest-postal", "2026-05", "Pago", "2026-06-04T15:00:00.000Z"),
+];
+
+/** Recibos de lote pago aparecem como "Pago", como no fluxo da referência. */
+export const RECIBOS_DEMO: Receipt[] = TODOS_RECIBOS.map((item) => {
+  const lote = FECHAMENTOS_DEMO.find((f) => f.prestadorId === item.prestadorId && f.competencia === item.competencia);
+  return lote?.review === "Pago" && item.status === "Aprovado" ? { ...item, status: "Pago" } : item;
+});
+
+export const REGISTROS_DEMO: RegistroRecibo[] = [
+  { id: "log-3", prestadorId: "prest-rota", tipo: "status", acao: "Fechamento Junho 2026 enviado", reciboId: null, usuario: "Rota Leve Entregas", dataHora: "2026-06-28T18:00:00.000Z", detalhes: "3 recibo(s) · R$ 375,00" },
+  { id: "log-2", prestadorId: "prest-apoio", tipo: "aprovacao", acao: "Conferência finalizada", reciboId: null, usuario: "Fernanda Lima", dataHora: "2026-06-29T11:20:00.000Z", detalhes: "Apoio Forense Paulista · Junho 2026 · R$ 734,50" },
+  { id: "log-1", prestadorId: "prest-marina", tipo: "criacao", acao: "Recibo criado", reciboId: "REC-0148", usuario: "Marina Corrêa Diligências", dataHora: "2026-06-18T13:00:00.000Z", detalhes: "Cliente: Vertti Participações" },
 ];

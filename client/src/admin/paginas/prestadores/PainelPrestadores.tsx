@@ -4,7 +4,7 @@ import { GraficoBarras } from "@/admin/componentes/Graficos";
 import Kpi from "@/admin/componentes/Kpi";
 import Selo from "@/admin/componentes/Selo";
 import { formatBRL, formatMonth } from "@/lib/portal";
-import { evolucaoMensal, montarLotes, rankingPrestadores, totalPorCategoria } from "@/modulos/prestadores/regras";
+import { evolucaoMensal, conferenciaAberta, montarLotes, rankingPrestadores, totalPorCategoria } from "@/modulos/prestadores/regras";
 import { CATEGORIAS_PRESTADOR } from "@/modulos/prestadores/tipos";
 import { useDadosPrestadores } from "@/modulos/prestadores/usarDados";
 import { BadgeCheck, ClipboardCheck, Truck, Wallet } from "lucide-react";
@@ -26,7 +26,7 @@ export default function PainelPrestadores() {
     servicos: ponto.servicos,
   }));
   const lotes = montarLotes(recibos, fechamentos, prestadores);
-  const aguardando = lotes.filter((lote) => lote.situacao === "Aguardando conferência" || lote.pendentes > 0);
+  const aguardando = lotes.filter(conferenciaAberta);
   const aPagar = lotes.filter((lote) => lote.situacao === "Conferido");
   const totalAprovado = ranking.reduce((soma, linha) => soma + linha.valor, 0);
   const servicos = ranking.reduce((soma, linha) => soma + linha.servicos, 0);

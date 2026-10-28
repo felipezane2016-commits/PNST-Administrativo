@@ -4,7 +4,7 @@ import { sair, usuarios } from "@/_core/identidade/sessao";
 import { useTheme } from "@/contexts/ThemeContext";
 import { notificacoes } from "@/modulos/notificacoes/colecao";
 import { fechamentos, prestadores, recibos } from "@/modulos/prestadores/colecoes";
-import { montarLotes } from "@/modulos/prestadores/regras";
+import { conferenciaAberta, montarLotes } from "@/modulos/prestadores/regras";
 import { ArrowLeft, Building2, FileText, Landmark, LayoutGrid, LogOut, Menu, Moon, Receipt, Sun, UserCog, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
@@ -67,9 +67,7 @@ function useContadores(usuario: Usuario): Record<Contador, number> {
     const doPagamento = contadoresPagamentos(usuario, listaPagamentos, config, pessoas);
     return {
       notificacoes: avisos.filter(aviso => !aviso.lida).length,
-      conferencia: montarLotes(listaRecibos, listaFechamentos, listaPrestadores).filter(
-        lote => lote.situacao === "Aguardando conferência" || lote.pendentes > 0
-      ).length,
+      conferencia: montarLotes(listaRecibos, listaFechamentos, listaPrestadores).filter(conferenciaAberta).length,
       ordens: ordensHoje,
       ...doPagamento,
       // Na entrada do Account Management: tudo o que espera a pessoa lá dentro.

@@ -2,69 +2,44 @@ import PortalShell from "@/components/PortalShell";
 import ReceiptModal from "@/components/ReceiptModal";
 import StatusPill from "@/components/StatusPill";
 import { usePortal } from "@/contexts/PortalContext";
-import { abrirAnexo } from "@/_core/armazenamento/anexos";
 import { abrirReciboEmPdf } from "@/lib/reciboPdf";
 import Painel from "@/admin/componentes/Painel";
 import {
-  canEditReceipt,
-  canRemoveReceipt,
-  receiptLockReason,
+  anexosDoRecibo,
   filterReceipts,
   formatBRL,
   formatDate,
-  formatMonth,
+  formatMonthTitle,
+  listCompetencias,
+  RECEIPT_CATEGORIES,
   RECEIPT_STATUSES,
-  summarizeReceipts,
+  receiptSendAction,
   type PrototypeReceiptStatus,
   type Receipt,
   type ReceiptDraft,
 } from "@/lib/portal";
-import {
-  AlertCircle,
-  FileDown,
-  Paperclip,
-  Plus,
-  Search,
-  SearchX,
-  Send,
-  Trash2,
-} from "lucide-react";
+import { AlertCircle, FileDown, Paperclip, Pencil, Plus, Search, SearchX, Send, Trash2 } from "lucide-react";
 import { useState } from "react";
 import CabecalhoPagina from "@/components/CabecalhoPagina";
 
-/** Filete de cada indicador, na ordem em que aparecem. */
-const TONS_KPI = ["laranja", "verde", "ambar", "neutro"];
-
-type StatusFilter = PrototypeReceiptStatus | "Todos";
-
+/** Meus recibos: busca, filtros (status, categoria, mês) e as ações de cada recibo. */
 export default function Receipts() {
-  const {
-    receipts,
-    currentCompetencia,
-    createReceipt,
-    updateReceipt,
-    submitReceipt,
-    removeReceipt,
-    closingFor,
-    prestadorId,
-    provider,
-  } = usePortal();
-  const [removendo, setRemovendo] = useState<Receipt | null>(null);
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<StatusFilter>("Todos");
+  const { receipts, currentCompetencia, createReceipt, updateReceipt, setReceiptStatus, removeReceipt, prestadorId, provider } = usePortal();
+  const [busca, setBusca] = useState("");
+  const [status, setStatus] = useState<PrototypeReceiptStatus | "">("");
+  const [categoria, setCategoria] = useState("");
+  const [mes, setMes] = useState("");
   const [editing, setEditing] = useState<Receipt | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [removendo, setRemovendo] = useState<Receipt | null>(null);
+  const [enviando, setEnviando] = useState<Receipt | null>(null);
 
-  const visible = filterReceipts(receipts, search, status);
-  const summary = summarizeReceipts(receipts);
+  const visible = filterReceipts(receipts, { busca, status, categoria, competencia: mes });
+  const categorias = Array.from(new Set([...RECEIPT_CATEGORIES, ...receipts.map((recibo) => recibo.category)]));
+  const filtrando = Boolean(busca || status || categoria || mes);
 
   function openNew() {
     setEditing(null);
-    setModalOpen(true);
-  }
-
-  function openEdit(receipt: Receipt) {
-    setEditing(receipt);
     setModalOpen(true);
   }
 
@@ -79,111 +54,76 @@ export default function Receipts() {
     closeModal();
   }
 
-  const kpis = [
-    {
-      label: "Recibos lançados",
-      value: String(summary.count),
-      detail: "todas as competências",
-    },
-    {
-      label: "Valor bruto",
-      value: formatBRL(summary.gross),
-      detail: "inclui rejeitados",
-    },
-    {
-      label: "Aprovado",
-      value: formatBRL(summary.approvedAmount),
-      detail: `${summary.byStatus.Aprovado} recibo(s)`,
-    },
-    {
-      label: "Em rascunho",
-      value: formatBRL(summary.draftAmount),
-      detail: `${summary.byStatus.Rascunho} a enviar`,
-    },
-  ];
-
-  const filters: StatusFilter[] = ["Todos", ...RECEIPT_STATUSES];
+  const acaoEnvio = enviando ? receiptSendAction(enviando) : null;
 
   return (
     <PortalShell title="Meus recibos">
       <CabecalhoPagina
-        rotulo={"Recibos"}
+        rotulo="Recibos"
         titulo="Meus recibos"
-        descricao={`Competência aberta · ${formatMonth(currentCompetencia)}. Lance, revise e envie cada serviço para conferência.`}
+        descricao="Gerencie seus recibos de serviço. Eles vão para o escritório no envio do fechamento do mês."
         acoes={
           <button type="button" className="button-primary" onClick={openNew}>
-            <Plus size={15} strokeWidth={2.2} /> Lançar recibo
+            <Plus size={15} strokeWidth={2.2} /> Novo recibo
           </button>
         }
       />
 
-      <div className="kpi-grid">
-        {kpis.map((kpi, indice) => (
-          <div className={`kpi-card kpi-${TONS_KPI[indice] ?? "neutro"}`} key={kpi.label}>
-            <span className="kpi-label">{kpi.label}</span>
-            <p className="kpi-value">{kpi.value}</p>
-            <p className="kpi-detail">{kpi.detail}</p>
-          </div>
-        ))}
-      </div>
-
       <section className="operations-surface">
-        <div className="surface-toolbar">
+        <div className="surface-toolbar surface-toolbar-filtros">
           <label className="inline-search">
             <Search size={15} strokeWidth={1.9} />
-            <input
-              value={search}
-              onChange={event => setSearch(event.target.value)}
-              placeholder="Buscar por cliente, processo, categoria ou nº"
-              aria-label="Buscar recibos"
-            />
+            <input value={busca} onChange={(event) => setBusca(event.target.value)} placeholder="Buscar recibo..." aria-label="Buscar recibos" />
           </label>
-          <div
-            className="filter-chips"
-            role="group"
-            aria-label="Filtrar por status"
-          >
-            {filters.map(option => {
-              const count =
-                option === "Todos" ? summary.count : summary.byStatus[option];
-              return (
-                <button
-                  key={option}
-                  type="button"
-                  className={
-                    status === option
-                      ? "filter-chip filter-chip-active"
-                      : "filter-chip"
-                  }
-                  aria-pressed={status === option}
-                  onClick={() => setStatus(option)}
-                >
-                  {option}
-                  <span className="filter-chip-count" aria-hidden="true">
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
+          <div className="inline-row">
+            <select className="field-input field-input-compacto" value={status} onChange={(event) => setStatus(event.target.value as PrototypeReceiptStatus | "")} aria-label="Status">
+              <option value="">Todos os status</option>
+              {RECEIPT_STATUSES.map((opcao) => (
+                <option key={opcao} value={opcao}>
+                  {opcao}
+                </option>
+              ))}
+            </select>
+            <select className="field-input field-input-compacto" value={categoria} onChange={(event) => setCategoria(event.target.value)} aria-label="Categoria">
+              <option value="">Todas as categorias</option>
+              {categorias.map((opcao) => (
+                <option key={opcao} value={opcao}>
+                  {opcao}
+                </option>
+              ))}
+            </select>
+            <select className="field-input field-input-compacto" value={mes} onChange={(event) => setMes(event.target.value)} aria-label="Mês">
+              <option value="">Todos os meses</option>
+              {listCompetencias(receipts).map((opcao) => (
+                <option key={opcao} value={opcao}>
+                  {formatMonthTitle(opcao)}
+                </option>
+              ))}
+            </select>
           </div>
+        </div>
+
+        <div className="section-header">
+          <div>
+            <span className="eyebrow">Recibos</span>
+          </div>
+          <span className="field-hint">{visible.length} registro(s)</span>
         </div>
 
         {visible.length === 0 ? (
           <div className="empty-state">
             <SearchX size={19} strokeWidth={1.8} />
             <strong>Nenhum recibo encontrado</strong>
-            <span>
-              {receipts.length === 0
-                ? "Lance o primeiro serviço da competência."
-                : "Ajuste a busca ou o filtro de status."}
-            </span>
-            {receipts.length > 0 ? (
+            <span>{receipts.length === 0 ? "Clique em Novo recibo para adicionar." : "Ajuste a busca ou os filtros."}</span>
+            {filtrando ? (
               <button
                 type="button"
                 className="button-secondary"
                 onClick={() => {
-                  setSearch("");
-                  setStatus("Todos");
+                  setBusca("");
+                  setStatus("");
+                  setCategoria("");
+                  setMes("");
                 }}
               >
                 Limpar filtros
@@ -191,160 +131,148 @@ export default function Receipts() {
             ) : null}
           </div>
         ) : (
-          <>
-            <div className="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Recibo</th>
-                    <th>Serviço</th>
-                    <th>Competência</th>
-                    <th>Data</th>
-                    <th>Anexo</th>
-                    <th>Valor</th>
-                    <th>Status</th>
-                    <th>
-                      <span className="sr-only">Ações</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visible.map(receipt => (
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Cliente</th>
+                  <th>Categoria</th>
+                  <th>Descrição</th>
+                  <th>Valor</th>
+                  <th>Status</th>
+                  <th>Anexos</th>
+                  <th>
+                    <span className="sr-only">Ações</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((receipt) => {
+                  const anexos = anexosDoRecibo(receipt);
+                  const envio = receiptSendAction(receipt);
+                  return (
                     <tr key={receipt.id}>
-                      <td>
-                        <span className="cell-code">{receipt.id}</span>
-                      </td>
+                      <td>{formatDate(receipt.serviceDate)}</td>
                       <td className="cell-main">
-                        <strong>{receipt.client}</strong>
-                        <span>
-                          {receipt.category} ·{" "}
-                          {receipt.caseRef || "sem processo"}
-                        </span>
-                        {receipt.reviewNote ? (
+                        <strong>{receipt.client || "—"}</strong>
+                        <span className="cell-code">{receipt.id}</span>
+                        {receipt.reviewNote && (receipt.status === "Ajuste solicitado" || receipt.status === "Rejeitado") ? (
                           <span className="cell-note">
                             <AlertCircle size={13} strokeWidth={2} />
                             {receipt.reviewNote}
                           </span>
                         ) : null}
                       </td>
-                      <td>{formatMonth(receipt.competencia)}</td>
-                      <td>{formatDate(receipt.serviceDate)}</td>
-                      <td>
-                        {receipt.attachmentId ? (
-                          <button
-                            type="button"
-                            className="icon-button icon-button-pequeno"
-                            aria-label={`Abrir anexo de ${receipt.id}: ${receipt.attachmentName ?? ""}`}
-                            title={`Comprovante em PDF: ${receipt.attachmentName ?? ""}`}
-                            onClick={() => void abrirAnexo(receipt.attachmentId!, receipt.attachmentName ?? receipt.id)}
-                          >
-                            <Paperclip size={14} strokeWidth={1.9} />
-                          </button>
-                        ) : receipt.attachmentName ? (
-                          <Paperclip
-                            size={14}
-                            strokeWidth={1.9}
-                            aria-label={`Anexo: ${receipt.attachmentName}`}
-                          />
-                        ) : (
-                          "—"
-                        )}
+                      <td>{receipt.category || "—"}</td>
+                      <td className="cell-truncar" title={receipt.description}>
+                        {receipt.description || "—"}
                       </td>
                       <td className="money">{formatBRL(receipt.amount)}</td>
                       <td>
                         <StatusPill status={receipt.status} />
                       </td>
                       <td>
+                        {anexos.length ? (
+                          <span className="anexo-contagem" title={anexos.map((arquivo) => arquivo.nome).join(", ")}>
+                            <Paperclip size={12} strokeWidth={2} /> {anexos.length}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td>
                         <div className="cell-actions">
                           <button
                             type="button"
-                            className="icon-button"
+                            className="icon-button icon-button-pequeno"
+                            aria-label={`Editar ${receipt.id}`}
+                            title="Editar"
+                            onClick={() => {
+                              setEditing(receipt);
+                              setModalOpen(true);
+                            }}
+                          >
+                            <Pencil size={14} strokeWidth={1.9} />
+                          </button>
+                          {envio ? (
+                            <button
+                              type="button"
+                              className="icon-button icon-button-pequeno icon-button-primario"
+                              aria-label={`${envio.rotulo}: ${receipt.id}`}
+                              title={envio.rotulo}
+                              onClick={() => setEnviando(receipt)}
+                            >
+                              <Send size={14} strokeWidth={1.9} />
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            className="icon-button icon-button-pequeno"
                             aria-label={`Abrir ${receipt.id} em PDF`}
-                            title="Abrir recibo em PDF (com o comprovante)"
+                            title="Recibo em PDF (com os documentos)"
                             onClick={() => void abrirReciboEmPdf(receipt, provider.name)}
                           >
-                            <FileDown size={15} strokeWidth={1.9} />
+                            <FileDown size={14} strokeWidth={1.9} />
                           </button>
-                          {canEditReceipt(receipt, closingFor(receipt.competencia)) ? (
-                            <button
-                              type="button"
-                              className="text-button"
-                              onClick={() => openEdit(receipt)}
-                            >
-                              Editar
-                            </button>
-                          ) : null}
-                          {receipt.status === "Rascunho" ||
-                          receipt.status === "Rejeitado" ? (
-                            <button
-                              type="button"
-                              className="icon-button"
-                              aria-label={`Enviar ${receipt.id} para conferência`}
-                              title="Enviar para conferência"
-                              onClick={() => submitReceipt(receipt.id)}
-                            >
-                              <Send size={15} strokeWidth={1.9} />
-                            </button>
-                          ) : null}
-                          {canRemoveReceipt(receipt, closingFor(receipt.competencia)) ? (
-                            <button
-                              type="button"
-                              className="icon-button icon-button-danger"
-                              aria-label={`Excluir ${receipt.id}`}
-                              title="Excluir recibo"
-                              onClick={() => setRemovendo(receipt)}
-                            >
-                              <Trash2 size={15} strokeWidth={1.9} />
-                            </button>
-                          ) : null}
-                          {receiptLockReason(closingFor(receipt.competencia)) ? (
-                            <span className="texto-apoio">{receiptLockReason(closingFor(receipt.competencia))}</span>
-                          ) : null}
+                          <button
+                            type="button"
+                            className="icon-button icon-button-pequeno icon-button-danger"
+                            aria-label={`Excluir ${receipt.id}`}
+                            title="Excluir"
+                            onClick={() => setRemovendo(receipt)}
+                          >
+                            <Trash2 size={14} strokeWidth={1.9} />
+                          </button>
                         </div>
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="surface-footnote">
-              <span>
-                {visible.length} de {receipts.length} recibo(s)
-              </span>
-              <span>Você edita e exclui recibos até o escritório finalizar a conferência do mês; editar um recibo aprovado devolve ele para a conferência</span>
-            </div>
-          </>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 
       {modalOpen ? (
-        <ReceiptModal
-          receipt={editing}
-          competencia={currentCompetencia}
-          prestadorId={prestadorId}
-          onClose={closeModal}
-          onSave={handleSave}
-        />
+        <ReceiptModal receipt={editing} competencia={currentCompetencia} prestadorId={prestadorId} onClose={closeModal} onSave={handleSave} />
       ) : null}
       {removendo ? (
         <Painel
           rotulo="Excluir recibo"
-          titulo={`Excluir o recibo ${removendo.id}?`}
+          titulo="Excluir este recibo?"
           aoFechar={() => setRemovendo(null)}
           aoEnviar={() => {
             removeReceipt(removendo.id);
             setRemovendo(null);
           }}
-          textoEnviar="Excluir recibo"
+          textoEnviar="Excluir"
         >
           <p>
-            <strong>{removendo.client}</strong> — {formatBRL(removendo.amount)}, serviço em {formatDate(removendo.serviceDate)}.
+            <strong>{removendo.client}</strong> — {formatBRL(removendo.amount)}, serviço em {formatDate(removendo.serviceDate)} ({removendo.status}).
           </p>
-          <p className="texto-perigo">
-            {removendo.status === "Enviado"
-              ? "O recibo já foi enviado: ele sai também da conferência do escritório. "
-              : ""}
-            O arquivo anexado é apagado junto. Não dá para desfazer.
+          <p className="texto-perigo">Os documentos anexados são apagados junto. Não dá para desfazer.</p>
+        </Painel>
+      ) : null}
+      {enviando && acaoEnvio ? (
+        <Painel
+          rotulo="Recibo"
+          titulo={acaoEnvio.status === "Pendente de envio" ? "Marcar este recibo como \"Pendente de envio\"?" : "Reenviar este recibo para conferência?"}
+          aoFechar={() => setEnviando(null)}
+          aoEnviar={() => {
+            setReceiptStatus(enviando.id, acaoEnvio.status);
+            setEnviando(null);
+          }}
+          textoEnviar={acaoEnvio.status === "Pendente de envio" ? "Marcar como pronto" : "Reenviar"}
+        >
+          <p>
+            <strong>{enviando.client}</strong> — {formatBRL(enviando.amount)}.
+          </p>
+          <p>
+            {acaoEnvio.status === "Pendente de envio"
+              ? "O recibo fica pronto e segue para o escritório no envio do fechamento do mês."
+              : "O recibo volta para a conferência do escritório com as correções."}
           </p>
         </Painel>
       ) : null}

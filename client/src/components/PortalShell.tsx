@@ -20,7 +20,7 @@ import MenuConta from "@/components/MenuConta";
 import MenuSino from "@/components/MenuSino";
 
 const NAV_ITEMS = [
-  { path: "/", label: "Visão geral", icon: LayoutDashboard },
+  { path: "/", label: "Dashboard", icon: LayoutDashboard },
   { path: "/recibos", label: "Meus recibos", icon: Receipt },
   { path: "/fechamento", label: "Fechamento mensal", icon: CalendarCheck },
 ] as const;
@@ -56,7 +56,8 @@ export default function PortalShell({
   const draftCount = receipts.filter(
     receipt => receipt.status === "Rascunho"
   ).length;
-  const rejected = receipts.filter(receipt => receipt.status === "Rejeitado");
+  // Avisos do sino: o que o escritório devolveu (ajuste) ou recusou.
+  const rejected = receipts.filter(receipt => receipt.status === "Ajuste solicitado" || receipt.status === "Rejeitado");
 
   const buscar = useCallback(
     () => [
@@ -194,11 +195,11 @@ export default function PortalShell({
             <MenuSino
               avisos={rejected.map(receipt => ({
                 id: receipt.id,
-                titulo: `${receipt.id} devolvido`,
+                titulo: receipt.status === "Rejeitado" ? `${receipt.id} rejeitado` : `${receipt.id}: ajuste solicitado`,
                 detalhe: receipt.reviewNote ?? "Revise e reenvie o recibo.",
                 abrir: () => navigate("/recibos"),
               }))}
-              vazio="Você está em dia. Nenhum recibo devolvido."
+              vazio="Você está em dia. Nenhum ajuste solicitado."
             />
             <MenuConta
               iniciais={initials(provider.name)}

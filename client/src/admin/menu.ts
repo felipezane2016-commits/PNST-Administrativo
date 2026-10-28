@@ -85,7 +85,7 @@ export const MENUS_MODULO: MenuModulo[] = [
         itens: [
           { rota: "/prestadores", rotulo: "Painel", icone: Gauge },
           { rota: "/prestadores/conferencia", rotulo: "Conferência", icone: ClipboardCheck, contador: "conferencia" },
-          { rota: "/prestadores/historico", rotulo: "Histórico de recibos", icone: History },
+          { rota: "/prestadores/historico", rotulo: "Histórico", icone: History },
         ],
       },
       {

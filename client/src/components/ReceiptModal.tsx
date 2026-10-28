@@ -1,14 +1,15 @@
 import { abrirAnexo, apagarAnexo, guardarAnexo, pastaDoPrestador } from "@/_core/armazenamento/anexos";
 import {
+  anexosDoRecibo,
   competenciaOf,
   RECEIPT_CATEGORIES,
   validateReceiptDraft,
+  type ArquivoAnexo,
   type Receipt,
-  type ReceiptCategory,
   type ReceiptDraft,
   type ValidationErrors,
 } from "@/lib/portal";
-import { AlertCircle, CheckCircle2, Paperclip, X } from "lucide-react";
+import { AlertCircle, Paperclip, Upload, X } from "lucide-react";
 import {
   useEffect,
   useRef,
@@ -21,14 +22,13 @@ import {
 function emptyDraft(competencia: string): ReceiptDraft {
   return {
     serviceDate: `${competencia}-01`,
-    category: "Diligência",
+    category: "Motoboy",
     client: "",
     caseRef: "",
     requester: "",
     description: "",
     amount: "",
-    attachmentName: null,
-    attachmentId: null,
+    anexos: [],
   };
 }
 
@@ -41,8 +41,7 @@ function receiptToDraft(receipt: Receipt): ReceiptDraft {
     requester: receipt.requester,
     description: receipt.description,
     amount: receipt.amount.toFixed(2).replace(".", ","),
-    attachmentName: receipt.attachmentName,
-    attachmentId: receipt.attachmentId ?? null,
+    anexos: anexosDoRecibo(receipt),
   };
 }
 
@@ -99,8 +98,11 @@ type ReceiptModalProps = {
   onSave: (draft: ReceiptDraft) => void;
 };
 
-/** Tamanho máximo do comprovante (o bucket aceita até 20 MB). */
+/** Tamanho máximo de cada documento (o bucket aceita até 20 MB). */
 const LIMITE_ARQUIVO = 20 * 1024 * 1024;
+
+/** Os formatos da referência: PDF, imagem, Word e Excel. */
+export const FORMATOS_DOCUMENTO = ".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx";
 
 export default function ReceiptModal({
   receipt,
@@ -113,7 +115,7 @@ export default function ReceiptModal({
   // Arquivos enviados enquanto o formulário esteve aberto: os que não ficarem
   // no recibo (trocados ou cancelados) são apagados para não sobrar lixo.
   const enviadosAgora = useRef<string[]>([]);
-  const [enviando, setEnviando] = useState(false);
+  const [enviando, setEnviando] = useState<string | null>(null);
   const [erroArquivo, setErroArquivo] = useState<string | null>(null);
   const onClose = () => {
     enviadosAgora.current.forEach((id) => void apagarAnexo(id));
@@ -147,22 +149,29 @@ export default function ReceiptModal({
       setErrors(current => ({ ...current, [field]: undefined }));
   }
 
-  async function handleFile(event: ChangeEvent<HTMLInputElement>) {
-    const arquivo = event.target.files?.[0];
+  async function handleFiles(event: ChangeEvent<HTMLInputElement>) {
+    const arquivos = Array.from(event.target.files ?? []);
     event.target.value = "";
-    if (!arquivo) return;
-    if (arquivo.size > LIMITE_ARQUIVO) return setErroArquivo("Arquivo maior que 20 MB. Envie uma versão menor (PDF ou foto).");
-    setErroArquivo(null);
-    setEnviando(true);
-    try {
-      const anexo = await guardarAnexo(arquivo, pastaDoPrestador(prestadorId, competenciaOf(draft.serviceDate) || competencia));
-      enviadosAgora.current.push(anexo.id);
-      setDraft((atual) => ({ ...atual, attachmentName: anexo.nome, attachmentId: anexo.id }));
-    } catch {
-      setErroArquivo("Não foi possível enviar o arquivo. Verifique a conexão e tente de novo.");
-    } finally {
-      setEnviando(false);
+    if (!arquivos.length) return;
+    const grandes = arquivos.filter((arquivo) => arquivo.size > LIMITE_ARQUIVO);
+    setErroArquivo(grandes.length ? `Maior que 20 MB, não enviado: ${grandes.map((a) => a.name).join(", ")}.` : null);
+    const pasta = pastaDoPrestador(prestadorId, competenciaOf(draft.serviceDate) || competencia);
+    for (const arquivo of arquivos.filter((item) => item.size <= LIMITE_ARQUIVO)) {
+      setEnviando(arquivo.name);
+      try {
+        const anexo = await guardarAnexo(arquivo, pasta);
+        enviadosAgora.current.push(anexo.id);
+        const novo: ArquivoAnexo = { id: anexo.id, nome: anexo.nome, tipo: anexo.tipo, tamanho: arquivo.size };
+        setDraft((atual) => ({ ...atual, anexos: [...atual.anexos, novo] }));
+      } catch {
+        setErroArquivo(`Não foi possível enviar ${arquivo.name}. Verifique a conexão e tente de novo.`);
+      }
     }
+    setEnviando(null);
+  }
+
+  function removerAnexo(alvo: ArquivoAnexo) {
+    setDraft((atual) => ({ ...atual, anexos: atual.anexos.filter((arquivo) => arquivo !== alvo) }));
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -172,9 +181,9 @@ export default function ReceiptModal({
       setErrors(found);
       return;
     }
-    // Fica só o arquivo escolhido por último; o anterior do recibo sai.
-    enviadosAgora.current.filter((id) => id !== draft.attachmentId).forEach((id) => void apagarAnexo(id));
-    if (receipt?.attachmentId && receipt.attachmentId !== draft.attachmentId) void apagarAnexo(receipt.attachmentId);
+    // Enviados agora e tirados da lista antes de salvar não ficam guardados.
+    const ficam = new Set(draft.anexos.map((arquivo) => arquivo.id));
+    enviadosAgora.current.filter((id) => !ficam.has(id)).forEach((id) => void apagarAnexo(id));
     enviadosAgora.current = [];
     onSave(draft);
   }
@@ -193,13 +202,13 @@ export default function ReceiptModal({
         <div className="modal-panel-header">
           <div>
             <span className="eyebrow">
-              {receipt ? receipt.id : "Novo lançamento"}
+              {receipt ? `${receipt.id} · ${receipt.status}` : "Informações do serviço"}
             </span>
             <h2 id="recibo-titulo">
-              {receipt ? "Editar recibo" : "Lançar recibo"}
+              {receipt ? "Editar recibo" : "Novo recibo"}
             </h2>
             <p>
-              {descricao ?? "O recibo fica como rascunho até você enviá-lo para conferência."}
+              {descricao ?? (receipt ? "As alterações ficam registradas no histórico." : "O recibo começa como rascunho; ele vai para o escritório no envio do fechamento do mês.")}
             </p>
           </div>
           <button
@@ -216,7 +225,7 @@ export default function ReceiptModal({
           <div className="field-grid">
             <Field
               id="recibo-data"
-              label="Data do serviço"
+              label="Data do serviço *"
               error={errors.serviceDate}
             >
               {aria => (
@@ -230,16 +239,17 @@ export default function ReceiptModal({
                 />
               )}
             </Field>
-            <Field id="recibo-categoria" label="Categoria">
+            <Field id="recibo-categoria" label="Categoria *">
               {aria => (
                 <select
                   {...aria}
                   className="field-input"
                   value={draft.category}
-                  onChange={event =>
-                    update("category", event.target.value as ReceiptCategory)
-                  }
+                  onChange={event => update("category", event.target.value)}
                 >
+                  {(RECEIPT_CATEGORIES as readonly string[]).includes(draft.category) ? null : (
+                    <option value={draft.category}>{draft.category}</option>
+                  )}
                   {RECEIPT_CATEGORIES.map(category => (
                     <option key={category} value={category}>
                       {category}
@@ -251,20 +261,20 @@ export default function ReceiptModal({
           </div>
 
           <div className="field-grid">
-            <Field id="recibo-cliente" label="Cliente" error={errors.client}>
+            <Field id="recibo-cliente" label="Cliente *" error={errors.client}>
               {aria => (
                 <input
                   {...aria}
                   className="field-input"
                   value={draft.client}
                   onChange={event => update("client", event.target.value)}
-                  placeholder="Razão social ou nome"
+                  placeholder="Nome do cliente"
                 />
               )}
             </Field>
             <Field
               id="recibo-valor"
-              label="Valor (R$)"
+              label="Valor (R$) *"
               error={errors.amount}
               hint="Aceita 1.280,50 ou 1280.50"
             >
@@ -282,14 +292,14 @@ export default function ReceiptModal({
           </div>
 
           <div className="field-grid">
-            <Field id="recibo-caso" label="Caso ou processo">
+            <Field id="recibo-caso" label="Caso / Projeto">
               {aria => (
                 <input
                   {...aria}
                   className="field-input"
                   value={draft.caseRef}
                   onChange={event => update("caseRef", event.target.value)}
-                  placeholder="Número do processo ou projeto"
+                  placeholder="Número ou nome"
                 />
               )}
             </Field>
@@ -300,7 +310,7 @@ export default function ReceiptModal({
                   className="field-input"
                   value={draft.requester}
                   onChange={event => update("requester", event.target.value)}
-                  placeholder="Quem pediu o serviço"
+                  placeholder="Quem solicitou"
                 />
               )}
             </Field>
@@ -308,7 +318,7 @@ export default function ReceiptModal({
 
           <Field
             id="recibo-descricao"
-            label="Descrição do serviço"
+            label="Descrição detalhada *"
             error={errors.description}
           >
             {aria => (
@@ -317,52 +327,48 @@ export default function ReceiptModal({
                 className="field-input"
                 value={draft.description}
                 onChange={event => update("description", event.target.value)}
-                placeholder="O que foi executado, onde e para quem."
+                placeholder="Descreva o serviço executado..."
               />
             )}
           </Field>
 
           <div className="field-group">
             <span className="field-label" id="recibo-anexo-rotulo">
-              Comprovante
+              Documentos (NF, boleto, comprovante...)
             </span>
-            <label
-              className={
-                draft.attachmentName
-                  ? "upload-zone upload-zone-filled"
-                  : "upload-zone"
-              }
-            >
+            {draft.anexos.length ? (
+              <ul className="anexo-chips" aria-label="Documentos anexados">
+                {draft.anexos.map((arquivo, indice) => (
+                  <li className="anexo-chip" key={`${arquivo.id ?? arquivo.nome}-${indice}`}>
+                    {arquivo.id ? (
+                      <button type="button" className="anexo-chip-abrir" onClick={() => void abrirAnexo(arquivo.id!, arquivo.nome)} title="Abrir em PDF">
+                        <Paperclip size={12} strokeWidth={2} /> {arquivo.nome}
+                      </button>
+                    ) : (
+                      <span className="anexo-chip-abrir" title="Recibo antigo: o arquivo não foi guardado; anexe de novo.">
+                        <Paperclip size={12} strokeWidth={2} /> {arquivo.nome} (não guardado)
+                      </span>
+                    )}
+                    <button type="button" className="anexo-chip-tirar" aria-label={`Tirar ${arquivo.nome}`} onClick={() => removerAnexo(arquivo)}>
+                      <X size={12} strokeWidth={2.2} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <label className="upload-zone">
               <input
                 type="file"
-                accept="application/pdf,image/*"
-                onChange={handleFile}
-                disabled={enviando}
+                multiple
+                accept={FORMATOS_DOCUMENTO}
+                onChange={handleFiles}
+                disabled={Boolean(enviando)}
                 aria-labelledby="recibo-anexo-rotulo"
               />
-              {draft.attachmentName ? (
-                <CheckCircle2 size={19} strokeWidth={1.9} />
-              ) : (
-                <Paperclip size={19} strokeWidth={1.9} />
-              )}
-              <strong>{enviando ? "Enviando arquivo…" : (draft.attachmentName ?? "Selecionar arquivo")}</strong>
-              <span>
-                {draft.attachmentName
-                  ? "Clique para trocar"
-                  : "NF, boleto ou recibo — PDF, JPG ou PNG"}
-              </span>
+              <Upload size={19} strokeWidth={1.9} />
+              <strong>{enviando ? `Enviando ${enviando}…` : "Selecionar arquivos"}</strong>
+              <span>PDF, imagem, Word ou Excel — vários de uma vez, até 20 MB cada</span>
             </label>
-            {draft.attachmentId ? (
-              <button
-                type="button"
-                className="text-button"
-                onClick={() => void abrirAnexo(draft.attachmentId!, draft.attachmentName ?? "anexo")}
-              >
-                <Paperclip size={14} strokeWidth={2} /> Ver arquivo anexado (PDF)
-              </button>
-            ) : draft.attachmentName ? (
-              <span className="field-hint">Este recibo é anterior ao envio de arquivos: anexe o comprovante de novo para o escritório conseguir abrir.</span>
-            ) : null}
             {erroArquivo ? (
               <span className="field-error" role="alert">
                 <AlertCircle size={13} strokeWidth={2} />
@@ -379,8 +385,8 @@ export default function ReceiptModal({
             >
               Cancelar
             </button>
-            <button type="submit" className="button-primary" disabled={enviando}>
-              {receipt ? "Salvar alterações" : "Salvar rascunho"}
+            <button type="submit" className="button-primary" disabled={Boolean(enviando)}>
+              Salvar
             </button>
           </div>
         </form>

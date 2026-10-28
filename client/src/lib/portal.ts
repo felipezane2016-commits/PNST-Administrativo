@@ -1,47 +1,61 @@
 /**
- * Portal do Prestador — regras de domínio do protótipo.
+ * Portal do Prestador — regras de domínio dos recibos.
  *
- * Todas as funções aqui são puras: são a fonte da verdade do comportamento do
- * protótipo e são cobertas pelos testes em `server/portal.test.ts` e
- * `server/portal.rules.test.ts`.
+ * Funções puras: são a fonte da verdade do comportamento do portal e da
+ * conferência, cobertas pelos testes em `server/portal*.test.ts`. O fluxo segue
+ * o sistema de referência do escritório: o prestador lança, marca como pronto e
+ * envia o mês inteiro para conferência; o escritório finaliza (aprova), rejeita
+ * ou pede ajuste do lote e depois registra o pagamento.
  */
 
 export type PrototypeReceiptStatus =
   | "Rascunho"
+  | "Pendente de envio"
   | "Enviado"
+  | "Em análise"
+  | "Ajuste solicitado"
   | "Aprovado"
-  | "Rejeitado";
+  | "Pago"
+  | "Rejeitado"
+  | "Arquivado";
 
 export const RECEIPT_STATUSES: PrototypeReceiptStatus[] = [
   "Rascunho",
+  "Pendente de envio",
   "Enviado",
+  "Em análise",
+  "Ajuste solicitado",
   "Aprovado",
+  "Pago",
   "Rejeitado",
+  "Arquivado",
 ];
 
 /**
- * Classe de selo do design system para cada status. Segue o significado do
- * modelo: neutro é rascunho, azul é em andamento, verde é aprovado e vermelho é
- * bloqueado — nunca a cor sozinha, o selo sempre leva o nome do status.
+ * Classe de selo do design system para cada status: neutro é rascunho, âmbar
+ * pede ação do prestador, azul está com o escritório, verde foi aceito e
+ * vermelho foi recusado. O selo sempre leva o nome — nunca a cor sozinha.
  */
 export const STATUS_CLASS: Record<PrototypeReceiptStatus, string> = {
   Rascunho: "status-neutral",
+  "Pendente de envio": "status-amber",
   Enviado: "status-blue",
+  "Em análise": "status-blue",
+  "Ajuste solicitado": "status-amber",
   Aprovado: "status-green",
+  Pago: "status-green",
   Rejeitado: "status-red",
+  Arquivado: "status-neutral",
 };
 
-export const RECEIPT_CATEGORIES = [
-  "Diligência",
-  "Honorários",
-  "Custas",
-  "Transporte",
-  "Postagem",
-  "Cartório",
-  "Outros",
-] as const;
+/** Categorias do formulário do portal (as mesmas do cadastro de prestadores). */
+export const RECEIPT_CATEGORIES = ["Motoboy", "Cartório", "Correio", "SAESP", "Outros"] as const;
 
-export type ReceiptCategory = (typeof RECEIPT_CATEGORIES)[number];
+/** Recibos antigos podem ter categorias que saíram da lista; continuam válidos. */
+export type ReceiptCategory = string;
+
+/** Arquivo anexado (recibo ou fechamento). `id` null: recibo antigo, só com o nome. */
+export type ArquivoAnexo = { id: string | null; nome: string; tipo?: string; tamanho?: number };
 
 export type Receipt = {
   id: string;
@@ -58,29 +72,52 @@ export type Receipt = {
   description: string;
   amount: number;
   status: PrototypeReceiptStatus;
-  attachmentName: string | null;
-  /** Arquivo guardado (Storage no modo real; navegador na demonstração). Recibos antigos só têm o nome. */
+  /** Documentos do recibo (NF, boleto, comprovante...). */
+  anexos?: ArquivoAnexo[];
+  /** Formato antigo (um arquivo só); `anexosDoRecibo` junta os dois. */
+  attachmentName?: string | null;
   attachmentId?: string | null;
-  /** Devolutiva do escritório — preenchida quando o recibo é rejeitado. */
+  /** Observação do escritório ao pedir ajuste ou rejeitar. */
   reviewNote: string | null;
   createdAt: string;
+  updatedAt?: string;
 };
 
-/** Andamento do fechamento do lado do escritório, depois do envio. */
-export type ClosingReview = "Aguardando conferência" | "Conferido" | "Pago";
+/** Andamento do lote (fechamento enviado) do lado do escritório. */
+export type ClosingReview = "Aguardando conferência" | "Em conferência" | "Conferido" | "Rejeitado" | "Pago";
 
+/** Como cada situação do lote aparece na tela. */
+export const ROTULO_LOTE: Record<ClosingReview, string> = {
+  "Aguardando conferência": "Conferência pendente",
+  "Em conferência": "Em conferência",
+  Conferido: "Conferência finalizada",
+  Rejeitado: "Rejeitado",
+  Pago: "Pago",
+};
+
+/** Fechamento do mês: um por prestador e competência. Enviado, vira o lote da conferência. */
 export type Closing = {
   prestadorId: string;
   competencia: string;
-  documentName: string | null;
-  /** Arquivo do documento de faturamento, guardado como os anexos dos recibos. */
-  documentId?: string | null;
   submitted: boolean;
   submittedAt: string | null;
   /** null enquanto o prestador não envia; o escritório avança daí em diante. */
   review: ClosingReview | null;
+  /** Recibos que foram no envio e o valor total na hora do envio. */
+  reciboIds?: string[];
+  valorTotal?: number;
+  /** NF, fatura ou boleto do fechamento (opcionais, um ou vários). */
+  documentos?: ArquivoAnexo[];
+  /** Observação do escritório (ajuste ou rejeição). */
+  obs?: string | null;
+  /** Documento único gerado ao finalizar a conferência (recibos + comprovantes + NF). */
+  documentoUnico?: ArquivoAnexo | null;
+  conferidoEm?: string | null;
   /** Dia em que o escritório pagou o lote; alimenta o razão da conciliação. */
   paidAt?: string | null;
+  /** Formato antigo (um documento só); `documentosDoFechamento` junta os dois. */
+  documentName?: string | null;
+  documentId?: string | null;
 };
 
 export type Provider = {
@@ -100,14 +137,40 @@ export type ReceiptDraft = {
   requester: string;
   description: string;
   amount: string;
-  attachmentName: string | null;
-  attachmentId: string | null;
+  anexos: ArquivoAnexo[];
+};
+
+/** Registro do histórico de atividades (quem fez o quê, quando). */
+export type TipoRegistro = "criacao" | "edicao" | "status" | "upload" | "aprovacao" | "pagamento" | "exclusao" | "arquivo";
+
+export type RegistroRecibo = {
+  id: string;
+  prestadorId: string;
+  tipo: TipoRegistro;
+  acao: string;
+  reciboId: string | null;
+  usuario: string;
+  dataHora: string;
+  detalhes: string;
+  /** Arquivo gerado e guardado na pasta do prestador (relatório, documento único). */
+  arquivo?: ArquivoAnexo & { competencia: string };
+};
+
+export const ROTULO_REGISTRO: Record<TipoRegistro, string> = {
+  criacao: "Criação",
+  edicao: "Edição",
+  status: "Status",
+  upload: "Upload",
+  aprovacao: "Aprovação",
+  pagamento: "Pagamento",
+  exclusao: "Exclusão",
+  arquivo: "Arquivo",
 };
 
 export function formatBRL(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
     .format(value)
-    .replace(/ /g, " ");
+    .replace(/\u00a0/g, " ");
 }
 
 export function formatMonth(value: string) {
@@ -117,53 +180,17 @@ export function formatMonth(value: string) {
   }).format(new Date(`${value}-01T12:00:00`));
 }
 
-export function calculateClosingProgress(
-  statuses: PrototypeReceiptStatus[],
-  documentAttached: boolean,
-  submitted: boolean
-) {
-  const receiptStep = statuses.length > 0;
-  const reviewStep = statuses.some(status => status === "Aprovado");
-  const documentStep = documentAttached;
-  const sentStep = submitted;
-  return Math.min(
-    100,
-    Math.round(
-      ([receiptStep, reviewStep, documentStep, sentStep].filter(Boolean)
-        .length /
-        4) *
-        100
-    )
-  );
+/** "Junho 2026", como no cabeçalho do fechamento. */
+export function formatMonthTitle(value: string) {
+  const texto = new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(new Date(`${value}-01T12:00:00`));
+  return `${texto.charAt(0).toUpperCase()}${texto.slice(1)} ${value.slice(0, 4)}`;
 }
 
-export function receiptsIncludedInClosing(statuses: PrototypeReceiptStatus[]) {
-  return statuses.filter(status => status !== "Rejeitado").length;
-}
-
-/** Etapas do fechamento, na mesma ordem usada por `calculateClosingProgress`. */
-export const CLOSING_STEPS = [
-  "Recibos lançados",
-  "Revisão aprovada",
-  "Documento anexado",
-  "Enviado ao escritório",
-] as const;
-
-/**
- * Quais das quatro etapas do fechamento já foram concluídas. Espelha a ordem de
- * `CLOSING_STEPS` e os mesmos critérios de `calculateClosingProgress`.
- */
-export function closingSteps(
-  statuses: PrototypeReceiptStatus[],
-  documentAttached: boolean,
-  submitted: boolean
-) {
-  return [
-    statuses.length > 0,
-    statuses.some(status => status === "Aprovado"),
-    documentAttached,
-    submitted,
-  ];
+/** Mês anterior ou seguinte de uma competência `YYYY-MM`. */
+export function shiftMonth(competencia: string, delta: number) {
+  const [ano, mes] = competencia.split("-").map(Number);
+  const data = new Date(ano, mes - 1 + delta, 1);
+  return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, "0")}`;
 }
 
 export function formatDate(value: string) {
@@ -184,57 +211,30 @@ export function nextReceiptId(receipts: Receipt[]) {
   return `REC-${String(highest + 1).padStart(4, "0")}`;
 }
 
-export type ReceiptSummary = {
-  count: number;
-  gross: number;
-  draftAmount: number;
-  sentAmount: number;
-  approvedAmount: number;
-  rejectedAmount: number;
-  byStatus: Record<PrototypeReceiptStatus, number>;
-};
-
-export function summarizeReceipts(receipts: Receipt[]): ReceiptSummary {
-  const byStatus: Record<PrototypeReceiptStatus, number> = {
-    Rascunho: 0,
-    Enviado: 0,
-    Aprovado: 0,
-    Rejeitado: 0,
-  };
-  const totals: Record<PrototypeReceiptStatus, number> = {
-    Rascunho: 0,
-    Enviado: 0,
-    Aprovado: 0,
-    Rejeitado: 0,
-  };
-
-  for (const receipt of receipts) {
-    byStatus[receipt.status] += 1;
-    totals[receipt.status] += receipt.amount;
-  }
-
-  return {
-    count: receipts.length,
-    gross: receipts.reduce((total, receipt) => total + receipt.amount, 0),
-    draftAmount: totals.Rascunho,
-    sentAmount: totals.Enviado,
-    approvedAmount: totals.Aprovado,
-    rejectedAmount: totals.Rejeitado,
-    byStatus,
-  };
+/** Documentos do recibo, inclusive o do formato antigo (um arquivo só). */
+export function anexosDoRecibo(receipt: Pick<Receipt, "anexos" | "attachmentName" | "attachmentId">): ArquivoAnexo[] {
+  if (receipt.anexos) return receipt.anexos;
+  return receipt.attachmentName ? [{ id: receipt.attachmentId ?? null, nome: receipt.attachmentName }] : [];
 }
 
-/** Valor que entra no fechamento: tudo que não foi rejeitado. */
+/** Documentos do fechamento, inclusive o do formato antigo. */
+export function documentosDoFechamento(closing: Closing | null | undefined): ArquivoAnexo[] {
+  if (!closing) return [];
+  if (closing.documentos) return closing.documentos;
+  return closing.documentName ? [{ id: closing.documentId ?? null, nome: closing.documentName }] : [];
+}
+
+/** Recusados e arquivados não entram no fechamento nem na soma. */
+export function entraNoFechamento(receipt: Receipt) {
+  return receipt.status !== "Rejeitado" && receipt.status !== "Arquivado";
+}
+
+/** Valor que entra no fechamento. */
 export function closingTotal(receipts: Receipt[]) {
-  return receipts
-    .filter(receipt => receipt.status !== "Rejeitado")
-    .reduce((total, receipt) => total + receipt.amount, 0);
+  return receipts.filter(entraNoFechamento).reduce((total, receipt) => total + receipt.amount, 0);
 }
 
-export function receiptsOfCompetencia(
-  receipts: Receipt[],
-  competencia: string
-) {
+export function receiptsOfCompetencia(receipts: Receipt[], competencia: string) {
   return receipts.filter(receipt => receipt.competencia === competencia);
 }
 
@@ -245,75 +245,97 @@ export function listCompetencias(receipts: Receipt[]) {
     .reverse();
 }
 
-export function filterReceipts(
-  receipts: Receipt[],
-  search: string,
-  status: PrototypeReceiptStatus | "Todos"
-) {
-  const term = search.trim().toLowerCase();
-  return receipts.filter(receipt => {
-    if (status !== "Todos" && receipt.status !== status) return false;
-    if (!term) return true;
-    return [
-      receipt.id,
-      receipt.client,
-      receipt.caseRef,
-      receipt.description,
-      receipt.category,
-    ]
-      .join(" ")
-      .toLowerCase()
-      .includes(term);
-  });
+export type FiltroRecibos = {
+  busca?: string;
+  status?: PrototypeReceiptStatus | "";
+  categoria?: string;
+  competencia?: string;
+};
+
+/** Filtros da lista "Meus recibos" (e do histórico): mais recentes primeiro. */
+export function filterReceipts(receipts: Receipt[], filtro: FiltroRecibos) {
+  const termo = (filtro.busca ?? "").trim().toLowerCase();
+  return receipts
+    .filter(receipt => !filtro.status || receipt.status === filtro.status)
+    .filter(receipt => !filtro.categoria || receipt.category === filtro.categoria)
+    .filter(receipt => !filtro.competencia || receipt.competencia === filtro.competencia)
+    .filter(
+      receipt =>
+        !termo ||
+        [receipt.id, receipt.client, receipt.description, receipt.category, receipt.caseRef]
+          .join(" ")
+          .toLowerCase()
+          .includes(termo)
+    )
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+const soma = (receipts: Receipt[]) => receipts.reduce((total, receipt) => total + receipt.amount, 0);
+
+/** Indicadores do painel do prestador (os nove da referência). */
+export function portalKpis(receipts: Receipt[], mesAtual: string) {
+  const doMes = receipts.filter(receipt => receipt.serviceDate.slice(0, 7) === mesAtual);
+  const receitaMes = soma(doMes);
+  return {
+    recibosDoMes: doMes.length,
+    receitaMes,
+    receitaAprovada: soma(receipts.filter(receipt => receipt.status === "Aprovado" || receipt.status === "Pago")),
+    receitaPendente: soma(
+      receipts.filter(receipt => (["Rascunho", "Pendente de envio", "Enviado", "Em análise"] as PrototypeReceiptStatus[]).includes(receipt.status))
+    ),
+    ticketMedio: doMes.length ? receitaMes / doMes.length : 0,
+    pendentesDeEnvio: receipts.filter(receipt => receipt.status === "Rascunho" || receipt.status === "Pendente de envio").length,
+    ajustes: receipts.filter(receipt => receipt.status === "Ajuste solicitado").length,
+    aprovados: receipts.filter(receipt => receipt.status === "Aprovado").length,
+    pagos: receipts.filter(receipt => receipt.status === "Pago").length,
+  };
+}
+
+/** Quantos recibos há em cada status (só os status que aparecem). */
+export function statusDistribution(receipts: Receipt[]) {
+  return RECEIPT_STATUSES.map(status => ({ status, quantidade: receipts.filter(receipt => receipt.status === status).length })).filter(
+    linha => linha.quantidade > 0
+  );
 }
 
 /**
- * O prestador mexe nos recibos do mês até o escritório finalizar a conferência.
- * Editar um recibo já aprovado devolve ele para a conferência.
+ * O botão de envio da lista: rascunho vira "pronto" (pendente de envio); o que
+ * o escritório devolveu para ajuste volta para a conferência.
  */
-export function canEditReceipt(_receipt: Receipt, closing?: Closing | null) {
-  return !lotClosed(closing);
-}
-
-/** O prestador remove nas mesmas condições em que edita. */
-export const canRemoveReceipt = canEditReceipt;
-
-/** Por que o prestador não pode mais mexer no recibo (ou null quando pode). */
-export function receiptLockReason(closing?: Closing | null) {
-  if (closing?.review === "Pago") return "Mês já pago pelo escritório";
-  if (closing?.review === "Conferido") return "Mês já conferido: peça a correção ao escritório";
+export function receiptSendAction(receipt: Receipt): { rotulo: string; status: PrototypeReceiptStatus } | null {
+  if (receipt.status === "Rascunho") return { rotulo: "Marcar como pronto", status: "Pendente de envio" };
+  if (receipt.status === "Ajuste solicitado") return { rotulo: "Reenviar para conferência", status: "Enviado" };
   return null;
 }
 
-/** O escritório corrige ou exclui qualquer recibo até o mês ser pago. */
-export function officeCanChangeReceipt(closing?: Closing | null) {
-  return closing?.review !== "Pago";
+/** Fechamento do mês já com o escritório (um rejeitado pode ser reenviado). */
+export function closingSent(closing: Closing | null | undefined) {
+  return Boolean(closing?.submitted && closing.review && closing.review !== "Rejeitado");
 }
 
-/** Lote conferido ou pago: os recibos dele ficam congelados. */
-export function lotClosed(closing?: Closing | null) {
-  return closing?.review === "Conferido" || closing?.review === "Pago";
+/** Recibos que vão no envio do fechamento do mês. */
+export function receiptsForClosing(receipts: Receipt[], competencia: string) {
+  return receiptsOfCompetencia(receipts, competencia).filter(entraNoFechamento);
 }
 
-/**
- * O fechamento só pode ser enviado com pelo menos um recibo aproveitável e o
- * documento de faturamento anexado.
- */
-export function canSubmitClosing(
-  receipts: Receipt[],
-  documentAttached: boolean,
-  submitted: boolean
-) {
-  if (submitted) return false;
-  if (!documentAttached) return false;
-  return receiptsIncludedInClosing(receipts.map(receipt => receipt.status)) > 0;
+/** Inconsistências do mês antes do envio (validação do fechamento). */
+export function validateClosing(receipts: Receipt[]) {
+  const erros: string[] = [];
+  for (const receipt of receipts) {
+    if (!receipt.client.trim()) erros.push(`Recibo ${receipt.id}: cliente vazio`);
+    if (!(receipt.amount > 0)) erros.push(`Recibo ${receipt.id}: valor zerado`);
+    if (!receipt.description.trim()) erros.push(`Recibo ${receipt.id}: descrição vazia`);
+  }
+  return erros;
 }
 
 export type ValidationErrors = Partial<Record<keyof ReceiptDraft, string>>;
 
 /** Converte o valor digitado (`1.280,50` ou `1280.50`) em número. */
 export function parseAmount(value: string) {
-  const normalized = value.trim().replace(/\./g, "").replace(",", ".");
+  const texto = value.trim();
+  // "1280.50" (ponto decimal, sem vírgula) também vale.
+  const normalized = /^\d+\.\d{1,2}$/.test(texto) ? texto : texto.replace(/\./g, "").replace(",", ".");
   const parsed = Number.parseFloat(normalized);
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 }

@@ -6,12 +6,12 @@ import Cabecalho from "@/admin/componentes/Cabecalho";
 import Kpi from "@/admin/componentes/Kpi";
 import Selo, { type Tom } from "@/admin/componentes/Selo";
 import Vazio from "@/admin/componentes/Vazio";
-import { formatBRL } from "@/lib/portal";
+import { formatBRL, ROTULO_LOTE } from "@/lib/portal";
 import { tarefasContas } from "@/modulos/contas/colecoes";
 import { saudacao as saudacaoDaHora } from "@/modulos/contas/emails";
 import { eventosDoDia, montarAgenda, vencendoEmBreve, type TipoEvento } from "@/modulos/escritorio/agenda";
 import { reunioes } from "@/modulos/escritorio/colecoes";
-import { montarLotes } from "@/modulos/prestadores/regras";
+import { conferenciaAberta, montarLotes } from "@/modulos/prestadores/regras";
 import { useDadosPrestadores } from "@/modulos/prestadores/usarDados";
 import { ArrowRight, CalendarCheck, CalendarDays, ClipboardCheck, Clock3 } from "lucide-react";
 import { useLocation } from "wouter";
@@ -34,9 +34,7 @@ export default function VisaoGeral() {
   const agenda = montarAgenda({ reunioes: listaReunioes, tarefasContas: contas });
   const hoje = eventosDoDia(agenda, HOJE);
   const emBreve = vencendoEmBreve(contas, HOJE, somarDias(HOJE, 7));
-  const lotes = montarLotes(prestadores.recibos, prestadores.fechamentos, prestadores.prestadores).filter(
-    (lote) => lote.situacao === "Aguardando conferência" || lote.pendentes > 0,
-  );
+  const lotes = montarLotes(prestadores.recibos, prestadores.fechamentos, prestadores.prestadores).filter(conferenciaAberta);
 
   const veContas = veModulo(usuario, "contas");
   const vePrestadores = veModulo(usuario, "prestadores");
@@ -153,10 +151,10 @@ export default function VisaoGeral() {
                     <div className="item-row-copy">
                       <strong>{lote.prestador.nome}</strong>
                       <span>
-                        {lote.pendentes} recibo(s) a decidir · {formatBRL(lote.total)}
+                        {lote.recibos.length} recibo(s) · {formatBRL(lote.total)}
                       </span>
                     </div>
-                    <Selo tom={lote.situacao === "Aguardando conferência" ? "amber" : "neutral"}>{lote.situacao}</Selo>
+                    <Selo tom={lote.situacao === "Aguardando conferência" ? "amber" : "blue"}>{ROTULO_LOTE[lote.situacao]}</Selo>
                   </li>
                 ))}
               </ul>

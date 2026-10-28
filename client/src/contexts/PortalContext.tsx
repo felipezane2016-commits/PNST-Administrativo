@@ -1,17 +1,22 @@
 import { apagarAnexo } from "@/_core/armazenamento/anexos";
 import { criarColecao, useColecao } from "@/_core/armazenamento/colecao";
 import {
+  anexosDoRecibo,
   closingTotal,
-  competenciaOf,
+  documentosDoFechamento,
+  formatBRL,
+  formatMonthTitle,
   nextReceiptId,
-  parseAmount,
+  receiptsForClosing,
+  type ArquivoAnexo,
   type Closing,
+  type PrototypeReceiptStatus,
   type Provider,
   type Receipt,
   type ReceiptDraft,
 } from "@/lib/portal";
 import { DEMO_COMPETENCIA } from "@/lib/portalSeed";
-import { autenticarPrestador, avisarFechamentoRecebido } from "@/modulos/prestadores/acoes";
+import { apagarArquivosRemovidos, autenticarPrestador, avisarFechamentoRecebido, camposDoRascunho, registrar } from "@/modulos/prestadores/acoes";
 import { fechamentos, prestadores, recibos } from "@/modulos/prestadores/colecoes";
 import { MODO_REAL } from "@/_core/supabase/modo";
 import { HOJE } from "@/_core/tempo";
@@ -39,11 +44,14 @@ type PortalContextValue = {
   signOut: () => void;
   createReceipt: (draft: ReceiptDraft) => Receipt;
   updateReceipt: (id: string, draft: ReceiptDraft) => void;
-  submitReceipt: (id: string) => void;
+  /** Rascunho → pendente de envio; ajuste solicitado → de volta à conferência. */
+  setReceiptStatus: (id: string, status: PrototypeReceiptStatus) => void;
   removeReceipt: (id: string) => void;
   closingFor: (competencia: string) => Closing;
-  attachClosingDocument: (competencia: string, documentName: string | null, documentId?: string | null) => void;
-  submitClosing: (competencia: string) => void;
+  /** Envia o mês para conferência, com a NF/fatura/boleto (opcionais). */
+  submitClosing: (competencia: string, documentos: ArquivoAnexo[]) => { quantidade: number; total: number };
+  /** Anota no histórico um arquivo gerado (relatório mensal) e guardado na pasta. */
+  registerFile: (competencia: string, acao: string, arquivo: ArquivoAnexo) => void;
 };
 
 const PortalContext = createContext<PortalContextValue | null>(null);
@@ -57,22 +65,7 @@ function proximoReciboDoPrestador(lista: Receipt[], codigo: string) {
 }
 
 function emptyClosing(prestadorId: string, competencia: string): Closing {
-  return { prestadorId, competencia, documentName: null, submitted: false, submittedAt: null, review: null };
-}
-
-function draftToFields(draft: ReceiptDraft) {
-  return {
-    competencia: competenciaOf(draft.serviceDate),
-    serviceDate: draft.serviceDate,
-    category: draft.category,
-    client: draft.client.trim(),
-    caseRef: draft.caseRef.trim(),
-    requester: draft.requester.trim(),
-    description: draft.description.trim(),
-    amount: parseAmount(draft.amount),
-    attachmentName: draft.attachmentName,
-    attachmentId: draft.attachmentId,
-  };
+  return { prestadorId, competencia, submitted: false, submittedAt: null, review: null };
 }
 
 export function PortalProvider({ children }: { children: ReactNode }) {
@@ -133,60 +126,60 @@ export function PortalProvider({ children }: { children: ReactNode }) {
         // dele no número evita colisão com o de outro prestador.
         id: MODO_REAL ? proximoReciboDoPrestador(recibos.ler(), prestador?.codigoAcesso ?? meuId) : nextReceiptId(recibos.ler()),
         prestadorId: meuId,
-        ...draftToFields(draft),
+        ...camposDoRascunho(draft),
         status: "Rascunho",
         reviewNote: null,
         createdAt: new Date().toISOString(),
       };
       recibos.atualizar((lista) => [created, ...lista]);
+      registrar(meuId, "criacao", "Recibo criado", provider.name, `Cliente: ${created.client}`, created.id);
+      if (draft.anexos.length) registrar(meuId, "upload", `${draft.anexos.length} arquivo(s) anexado(s)`, provider.name, draft.anexos.map((a) => a.nome).join(", "), created.id);
       return created;
     },
-    [meuId, prestador?.codigoAcesso],
+    [meuId, prestador?.codigoAcesso, provider.name],
   );
 
+  // Como na referência: editar mantém a situação do recibo.
   const updateReceipt = useCallback(
     (id: string, draft: ReceiptDraft) => {
-      const fields = draftToFields(draft);
-      recibos.atualizar((lista) =>
-        lista.map((recibo) =>
-          recibo.id === id && meus(recibo)
-            ? {
-                ...recibo,
-                ...fields,
-                // Reeditar um recibo devolvido volta à fila: limpa a devolutiva
-                // e reabre como rascunho para novo envio. Um aprovado que muda
-                // volta para a conferência.
-                status: recibo.status === "Rejeitado" ? "Rascunho" : recibo.status === "Aprovado" ? "Enviado" : recibo.status,
-                reviewNote: recibo.status === "Rejeitado" ? null : recibo.reviewNote,
-              }
-            : recibo,
-        ),
-      );
+      const alvo = recibos.ler().find((recibo) => recibo.id === id && meus(recibo));
+      if (!alvo) return;
+      const antes = anexosDoRecibo(alvo);
+      recibos.atualizar((lista) => lista.map((recibo) => (recibo.id === id ? { ...recibo, ...camposDoRascunho(draft) } : recibo)));
+      apagarArquivosRemovidos(antes, draft.anexos);
+      registrar(meuId, "edicao", "Recibo editado", provider.name, `Status: ${alvo.status}`, id);
+      const novos = draft.anexos.filter((arquivo) => !antes.some((velho) => velho.id === arquivo.id));
+      if (novos.length) registrar(meuId, "upload", `${novos.length} arquivo(s) anexado(s)`, provider.name, novos.map((a) => a.nome).join(", "), id);
     },
-    [meus],
+    [meus, meuId, provider.name],
   );
 
-  const submitReceipt = useCallback(
-    (id: string) => {
+  const setReceiptStatus = useCallback(
+    (id: string, status: PrototypeReceiptStatus) => {
       recibos.atualizar((lista) =>
-        lista.map((recibo) =>
-          recibo.id === id && meus(recibo) && recibo.status !== "Aprovado"
-            ? { ...recibo, status: "Enviado", reviewNote: null }
-            : recibo,
-        ),
+        lista.map((recibo) => (recibo.id === id && meus(recibo) ? { ...recibo, status, updatedAt: new Date().toISOString() } : recibo)),
+      );
+      registrar(
+        meuId,
+        "status",
+        status === "Pendente de envio" ? "Recibo marcado como pendente de envio" : "Recibo reenviado para conferência",
+        provider.name,
+        "",
+        id,
       );
     },
-    [meus],
+    [meus, meuId, provider.name],
   );
 
   const removeReceipt = useCallback(
     (id: string) => {
       const alvo = recibos.ler().find((recibo) => recibo.id === id && meus(recibo));
       if (!alvo) return;
-      recibos.atualizar((lista) => lista.filter((recibo) => recibo !== alvo && recibo.id !== id));
-      if (alvo.attachmentId) void apagarAnexo(alvo.attachmentId);
+      recibos.atualizar((lista) => lista.filter((recibo) => recibo.id !== id));
+      anexosDoRecibo(alvo).forEach((arquivo) => arquivo.id && void apagarAnexo(arquivo.id));
+      registrar(meuId, "exclusao", "Recibo excluído", provider.name, `${alvo.client} · ${formatBRL(alvo.amount)}`, id);
     },
-    [meus],
+    [meus, meuId, provider.name],
   );
 
   const closingFor = useCallback(
@@ -206,35 +199,46 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     [meuId],
   );
 
-  const attachClosingDocument = useCallback(
-    (competencia: string, documentName: string | null, documentId: string | null = null) => {
-      const anterior = closingFor(competencia).documentId;
-      upsertClosing(competencia, { documentName, documentId });
-      if (anterior && anterior !== documentId) void apagarAnexo(anterior);
-    },
-    [upsertClosing, closingFor],
-  );
-
   const submitClosing = useCallback(
-    (competencia: string) => {
-      // Enviar o fechamento também encaminha os rascunhos da competência.
-      recibos.atualizar((lista) =>
-        lista.map((recibo) =>
-          meus(recibo) && recibo.competencia === competencia && recibo.status === "Rascunho"
-            ? { ...recibo, status: "Enviado" }
-            : recibo,
-        ),
-      );
+    (competencia: string, documentos: ArquivoAnexo[]) => {
+      // Vão todos os recibos do mês, menos os rejeitados e arquivados.
+      const itens = receiptsForClosing(recibos.ler().filter(meus), competencia);
+      const ids = new Set(itens.map((recibo) => recibo.id));
+      const total = closingTotal(itens);
+      const agora = new Date().toISOString();
+      recibos.atualizar((lista) => lista.map((recibo) => (ids.has(recibo.id) ? { ...recibo, status: "Enviado", updatedAt: agora } : recibo)));
+      const anterior = fechamentos.ler().find((item) => item.prestadorId === meuId && item.competencia === competencia);
       upsertClosing(competencia, {
         submitted: true,
-        submittedAt: new Date().toISOString(),
+        submittedAt: agora,
         review: "Aguardando conferência",
+        reciboIds: itens.map((recibo) => recibo.id),
+        valorTotal: total,
+        documentos,
+        obs: null,
+        documentName: null,
+        documentId: null,
       });
-      const doMes = recibos.ler().filter((recibo) => meus(recibo) && recibo.competencia === competencia);
-      const validos = doMes.filter((recibo) => recibo.status !== "Rejeitado");
-      avisarFechamentoRecebido(meuId, competencia, validos.length, closingTotal(doMes));
+      // Reenvio de lote rejeitado: os documentos antigos que não foram de novo saem.
+      if (anterior) apagarArquivosRemovidos(documentosDoFechamento(anterior), documentos);
+      registrar(
+        meuId,
+        "status",
+        `Fechamento ${formatMonthTitle(competencia)} enviado`,
+        provider.name,
+        `${itens.length} recibo(s) · ${formatBRL(total)}${documentos.length ? ` · ${documentos.length} doc(s) complementar(es)` : ""}`,
+      );
+      avisarFechamentoRecebido(meuId, competencia, itens.length, total);
+      return { quantidade: itens.length, total };
     },
-    [meus, meuId, upsertClosing],
+    [meus, meuId, upsertClosing, provider.name],
+  );
+
+  const registerFile = useCallback(
+    (competencia: string, acao: string, arquivo: ArquivoAnexo) => {
+      registrar(meuId, "arquivo", acao, provider.name, arquivo.nome, null, { ...arquivo, competencia });
+    },
+    [meuId, provider.name],
   );
 
   const value = useMemo<PortalContextValue>(
@@ -249,11 +253,11 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       signOut,
       createReceipt,
       updateReceipt,
-      submitReceipt,
+      setReceiptStatus,
       removeReceipt,
       closingFor,
-      attachClosingDocument,
       submitClosing,
+      registerFile,
     }),
     [
       provider,
@@ -265,11 +269,11 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       signOut,
       createReceipt,
       updateReceipt,
-      submitReceipt,
+      setReceiptStatus,
       removeReceipt,
       closingFor,
-      attachClosingDocument,
       submitClosing,
+      registerFile,
     ],
   );
 

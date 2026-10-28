@@ -2,8 +2,9 @@ import { closingTotal, type Closing, type Receipt } from "@/lib/portal";
 import type { CategoriaPrestador, Prestador, SituacaoLote } from "./tipos";
 
 /**
- * Regras puras da conferência de recibos. Um "lote" é o conjunto de recibos de
- * um prestador numa competência — é a unidade que o escritório confere e paga.
+ * Regras puras da conferência de recibos. Um "lote" é o fechamento que o
+ * prestador enviou: os recibos de uma competência, com a NF do mês. É a
+ * unidade que o escritório confere (finaliza, rejeita ou pede ajuste) e paga.
  */
 
 export type Lote = {
@@ -11,72 +12,63 @@ export type Lote = {
   prestador: Prestador;
   competencia: string;
   recibos: Receipt[];
-  fechamento: Closing | null;
+  fechamento: Closing;
   situacao: SituacaoLote;
-  /** Recibos ainda esperando decisão do escritório. */
-  pendentes: number;
   total: number;
+  enviadoEm: string | null;
 };
 
-export function situacaoDoLote(fechamento: Closing | null): SituacaoLote {
-  if (!fechamento || !fechamento.submitted) return "Recibos avulsos";
-  return fechamento.review ?? "Aguardando conferência";
+/** Recibos que foram no envio (os recibos excluídos depois somem do lote). */
+export function recibosDoLote(recibos: Receipt[], fechamento: Closing) {
+  const doMes = recibos.filter((recibo) => recibo.prestadorId === fechamento.prestadorId && recibo.competencia === fechamento.competencia);
+  if (fechamento.reciboIds) return doMes.filter((recibo) => fechamento.reciboIds!.includes(recibo.id));
+  return doMes.filter((recibo) => recibo.status !== "Rascunho" && recibo.status !== "Pendente de envio");
 }
 
-/**
- * Monta os lotes que precisam do escritório: os que já tiveram fechamento
- * enviado e os que têm recibo enviado avulso. Rascunho puro não aparece — o
- * prestador ainda não pediu nada.
- */
+/** Os lotes da conferência: todo fechamento enviado, o que pede ação primeiro. */
 export function montarLotes(recibos: Receipt[], fechamentos: Closing[], prestadores: Prestador[]): Lote[] {
   const porId = new Map(prestadores.map((prestador) => [prestador.id, prestador]));
-  const grupos = new Map<string, Receipt[]>();
-  for (const recibo of recibos) {
-    const chave = `${recibo.prestadorId}|${recibo.competencia}`;
-    grupos.set(chave, [...(grupos.get(chave) ?? []), recibo]);
-  }
-
   const lotes: Lote[] = [];
-  grupos.forEach((lista, chave) => {
-    const [prestadorId, competencia] = chave.split("|");
-    const prestador = porId.get(prestadorId);
-    if (!prestador) return;
-    const fechamento =
-      fechamentos.find((item) => item.prestadorId === prestadorId && item.competencia === competencia) ?? null;
-    const enviados = lista.filter((recibo) => recibo.status !== "Rascunho");
-    if (!fechamento?.submitted && !enviados.some((recibo) => recibo.status === "Enviado")) return;
+  for (const fechamento of fechamentos) {
+    const prestador = porId.get(fechamento.prestadorId);
+    if (!prestador || !fechamento.submitted || !fechamento.review) continue;
+    const doLote = recibosDoLote(recibos, fechamento);
     lotes.push({
-      chave,
+      chave: `${fechamento.prestadorId}|${fechamento.competencia}`,
       prestador,
-      competencia,
-      recibos: enviados,
+      competencia: fechamento.competencia,
+      recibos: doLote,
       fechamento,
-      situacao: situacaoDoLote(fechamento),
-      pendentes: enviados.filter((recibo) => recibo.status === "Enviado").length,
-      total: closingTotal(enviados),
+      situacao: fechamento.review,
+      total: closingTotal(doLote),
+      enviadoEm: fechamento.submittedAt,
     });
-  });
-
-  // Quem pede ação primeiro: aguardando > avulsos > conferido > pago; depois o mais recente.
+  }
   const ordem: Record<SituacaoLote, number> = {
     "Aguardando conferência": 0,
-    "Recibos avulsos": 1,
+    "Em conferência": 1,
     Conferido: 2,
-    Pago: 3,
+    Rejeitado: 3,
+    Pago: 4,
   };
   return lotes.sort(
-    (a, b) => ordem[a.situacao] - ordem[b.situacao] || b.competencia.localeCompare(a.competencia),
+    (a, b) => ordem[a.situacao] - ordem[b.situacao] || (b.enviadoEm ?? "").localeCompare(a.enviadoEm ?? "") || b.competencia.localeCompare(a.competencia),
   );
 }
 
-/** A conferência fecha quando o prestador enviou o mês e nada ficou sem decisão. */
-export function podeFinalizarConferencia(lote: Lote) {
-  return lote.situacao === "Aguardando conferência" && lote.pendentes === 0 && lote.recibos.length > 0;
+/** Finalizar, rejeitar e pedir ajuste: enquanto a conferência está aberta. */
+export function conferenciaAberta(lote: Pick<Lote, "situacao">) {
+  return lote.situacao === "Aguardando conferência" || lote.situacao === "Em conferência";
 }
 
-export function podeMarcarPago(lote: Lote) {
+export const podeFinalizarConferencia = (lote: Lote) => conferenciaAberta(lote) && lote.recibos.length > 0;
+
+export function podeMarcarPago(lote: Pick<Lote, "situacao">) {
   return lote.situacao === "Conferido";
 }
+
+/** Aprovado ou pago: o que o escritório aceitou. */
+const aceito = (recibo: Receipt) => recibo.status === "Aprovado" || recibo.status === "Pago";
 
 export type LinhaRanking = { prestador: Prestador; valor: number; servicos: number };
 
@@ -84,7 +76,7 @@ export type LinhaRanking = { prestador: Prestador; valor: number; servicos: numb
 export function rankingPrestadores(recibos: Receipt[], prestadores: Prestador[]): LinhaRanking[] {
   return prestadores
     .map((prestador) => {
-      const aprovados = recibos.filter((recibo) => recibo.prestadorId === prestador.id && recibo.status === "Aprovado");
+      const aprovados = recibos.filter((recibo) => recibo.prestadorId === prestador.id && aceito(recibo));
       return {
         prestador,
         valor: aprovados.reduce((total, recibo) => total + recibo.amount, 0),
@@ -98,7 +90,7 @@ export function totalPorCategoria(recibos: Receipt[], prestadores: Prestador[]) 
   const categoriaDe = new Map(prestadores.map((prestador) => [prestador.id, prestador.categoria]));
   const totais = new Map<CategoriaPrestador, number>();
   for (const recibo of recibos) {
-    if (recibo.status !== "Aprovado") continue;
+    if (!aceito(recibo)) continue;
     const categoria = categoriaDe.get(recibo.prestadorId);
     if (!categoria) continue;
     totais.set(categoria, (totais.get(categoria) ?? 0) + recibo.amount);
@@ -110,7 +102,7 @@ export function totalPorCategoria(recibos: Receipt[], prestadores: Prestador[]) 
 export function evolucaoMensal(recibos: Receipt[]) {
   const porMes = new Map<string, { valor: number; servicos: number }>();
   for (const recibo of recibos) {
-    if (recibo.status !== "Aprovado") continue;
+    if (!aceito(recibo)) continue;
     const atual = porMes.get(recibo.competencia) ?? { valor: 0, servicos: 0 };
     porMes.set(recibo.competencia, { valor: atual.valor + recibo.amount, servicos: atual.servicos + 1 });
   }

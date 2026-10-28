@@ -1,4 +1,6 @@
 import { PDFDocument, rgb, StandardFonts, type PDFFont, type PDFPage } from "pdf-lib";
+
+export { rgb };
 import type { Anexo } from "./anexos";
 
 /**

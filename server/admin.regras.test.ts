@@ -16,44 +16,54 @@ function prestador(id: string, codigo = id.toUpperCase()): Prestador {
 function recibo(id: string, prestadorId: string, status: Receipt["status"], amount = 100, competencia = "2026-06"): Receipt {
   return {
     id, prestadorId, competencia, serviceDate: `${competencia}-10`, category: "Transporte", client: "C", caseRef: "", requester: "",
-    description: "", amount, status, attachmentName: null, reviewNote: null, createdAt: `${competencia}-10T00:00:00Z`,
+    description: "", amount, status, anexos: [], reviewNote: null, createdAt: `${competencia}-10T00:00:00Z`,
   };
 }
 
 function fechamento(prestadorId: string, review: Closing["review"], competencia = "2026-06"): Closing {
-  return { prestadorId, competencia, documentName: "nf.pdf", submitted: review !== null, submittedAt: null, review };
+  return { prestadorId, competencia, documentos: [{ id: null, nome: "nf.pdf" }], submitted: review !== null, submittedAt: null, review };
 }
 
 describe("Conferência de recibos", () => {
   const prestadores = [prestador("a"), prestador("b"), prestador("c")];
 
-  it("agrupa por prestador e competência e ignora quem só tem rascunho", () => {
+  it("cada fechamento enviado é um lote; recibo avulso ou mês não enviado não aparece", () => {
     const lotes = montarLotes(
-      [recibo("1", "a", "Enviado"), recibo("2", "a", "Rascunho"), recibo("3", "b", "Rascunho")],
-      [],
+      [recibo("1", "a", "Enviado"), recibo("2", "a", "Rascunho"), recibo("3", "b", "Pendente de envio")],
+      [fechamento("a", "Aguardando conferência"), fechamento("b", null)],
       prestadores,
     );
     expect(lotes).toHaveLength(1);
-    expect(lotes[0].situacao).toBe("Recibos avulsos");
-    // O rascunho do mesmo prestador não entra no lote: o escritório não pode decidir o que não recebeu.
+    expect(lotes[0].situacao).toBe("Aguardando conferência");
+    // Sem a lista do envio, o rascunho do mesmo mês não entra no lote.
     expect(lotes[0].recibos.map((item) => item.id)).toEqual(["1"]);
+  });
+
+  it("o lote leva os recibos que foram no envio", () => {
+    const [lote] = montarLotes(
+      [recibo("1", "a", "Enviado"), recibo("2", "a", "Rascunho")],
+      [{ ...fechamento("a", "Aguardando conferência"), reciboIds: ["1", "2"] }],
+      prestadores,
+    );
+    expect(lote.recibos.map((item) => item.id)).toEqual(["1", "2"]);
   });
 
   it("põe primeiro o que pede ação", () => {
     const lotes = montarLotes(
-      [recibo("1", "a", "Aprovado"), recibo("2", "b", "Enviado"), recibo("3", "c", "Aprovado")],
+      [recibo("1", "a", "Pago"), recibo("2", "b", "Enviado"), recibo("3", "c", "Aprovado")],
       [fechamento("a", "Pago"), fechamento("b", "Aguardando conferência"), fechamento("c", "Conferido")],
       prestadores,
     );
     expect(lotes.map((lote) => lote.situacao)).toEqual(["Aguardando conferência", "Conferido", "Pago"]);
   });
 
-  it("só finaliza com o fechamento enviado e nenhum recibo sem decisão", () => {
-    const [comPendencia] = montarLotes([recibo("1", "a", "Enviado")], [fechamento("a", "Aguardando conferência")], prestadores);
-    expect(podeFinalizarConferencia(comPendencia)).toBe(false);
-    const [decidido] = montarLotes([recibo("1", "a", "Aprovado"), recibo("2", "a", "Rejeitado")], [fechamento("a", "Aguardando conferência")], prestadores);
-    expect(podeFinalizarConferencia(decidido)).toBe(true);
-    expect(podeMarcarPago(decidido)).toBe(false);
+  it("finaliza enquanto a conferência está aberta; paga depois de finalizada", () => {
+    const [aberto] = montarLotes([recibo("1", "a", "Enviado")], [fechamento("a", "Aguardando conferência")], prestadores);
+    expect(podeFinalizarConferencia(aberto)).toBe(true);
+    expect(podeMarcarPago(aberto)).toBe(false);
+    const [conferido] = montarLotes([recibo("1", "a", "Aprovado")], [fechamento("a", "Conferido")], prestadores);
+    expect(podeFinalizarConferencia(conferido)).toBe(false);
+    expect(podeMarcarPago(conferido)).toBe(true);
   });
 
   it("o total do lote exclui recibos rejeitados", () => {
@@ -61,8 +71,8 @@ describe("Conferência de recibos", () => {
     expect(lote.total).toBe(300);
   });
 
-  it("ranking soma só o aprovado", () => {
-    const [primeiro] = rankingPrestadores([recibo("1", "b", "Aprovado", 500), recibo("2", "a", "Enviado", 900)], prestadores);
+  it("ranking soma só o aprovado ou pago", () => {
+    const [primeiro] = rankingPrestadores([recibo("1", "b", "Aprovado", 300), recibo("3", "b", "Pago", 200), recibo("2", "a", "Enviado", 900)], prestadores);
     expect(primeiro.prestador.id).toBe("b");
     expect(primeiro.valor).toBe(500);
   });

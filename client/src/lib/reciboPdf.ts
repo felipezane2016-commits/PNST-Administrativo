@@ -1,138 +1,360 @@
-import { abrirAbaDeEspera, lerAnexo, mostrarPdf } from "@/_core/armazenamento/anexos";
+import { abrirAbaDeEspera, baixarBlob, lerAnexo, mostrarPdf } from "@/_core/armazenamento/anexos";
 import { formatarData, formatarDataHora } from "@/_core/tempo";
-import { closingTotal, formatBRL, formatMonth, type Closing, type Receipt } from "@/lib/portal";
+import { anexosDoRecibo, closingTotal, documentosDoFechamento, formatBRL, formatMonthTitle, type Closing, type Receipt } from "@/lib/portal";
+import type { RGB } from "pdf-lib";
 
 /**
- * Recibo (ou o mês inteiro do prestador) em PDF: página de dados e, em
- * seguida, o comprovante anexado. O pdf-lib só carrega quando alguém abre.
+ * Os PDFs dos recibos, no desenho do sistema de referência do escritório:
+ * - Recibo de despesa (cabeçalho laranja PNST ADVOGADOS), seguido dos documentos anexados;
+ * - Nota de despesas (português ou inglês) e o unificado (recibo + nota);
+ * - Documento único do mês (resumo + recibos + documentos + NF), gerado ao finalizar a conferência;
+ * - Relatório mensal de serviços do prestador.
+ * O pdf-lib só carrega quando alguém pede um PDF.
  */
 
 const pdfLib = () => import("@/_core/armazenamento/pdf");
 type Lib = Awaited<ReturnType<typeof pdfLib>>;
 type Doc = Awaited<ReturnType<Lib["novoPdf"]>>;
+export type Idioma = "pt" | "en";
 
-const geradoEm = () => `Gerado em ${formatarDataHora(new Date().toISOString())} pelo PNST Administrativo`;
+const MM = 72 / 25.4;
+const W = 210;
 
-function paginaDoRecibo(lib: Lib, { pdf, fontes }: Doc, recibo: Receipt, nomePrestador: string, situacaoAnexo: string) {
-  const { A4, MARGEM, cores, escrever, rodape, textoSeguro } = lib;
-  const pagina = pdf.addPage([A4.largura, A4.altura]);
-  const largura = A4.largura - MARGEM * 2;
-  let y = A4.altura - MARGEM;
-
-  pagina.drawText("RECIBO DE PRESTAÇÃO DE SERVIÇO", { x: MARGEM, y, size: 8.5, font: fontes.negrito, color: cores.APOIO });
-  y -= 26;
-  pagina.drawText(textoSeguro(fontes.negrito, recibo.id), { x: MARGEM, y, size: 22, font: fontes.negrito, color: cores.TINTA });
-  const valor = formatBRL(recibo.amount);
-  pagina.drawText(valor, { x: A4.largura - MARGEM - fontes.negrito.widthOfTextAtSize(valor, 20), y, size: 20, font: fontes.negrito, color: cores.TINTA });
-  y -= 18;
-  y = escrever(pagina, fontes.normal, `${nomePrestador} · ${formatMonth(recibo.competencia)} · Situação: ${recibo.status}`, MARGEM, y, 10, largura, cores.APOIO);
-  y -= 8;
-  pagina.drawLine({ start: { x: MARGEM, y }, end: { x: A4.largura - MARGEM, y }, thickness: 0.8, color: cores.LINHA });
-  y -= 24;
-
-  const campos: [string, string][] = [
-    ["Cliente", recibo.client || "—"],
-    ["Categoria", recibo.category],
-    ["Data do serviço", formatarData(recibo.serviceDate)],
-    ["Valor", valor],
-    ["Processo / caso", recibo.caseRef || "—"],
-    ["Quem pediu", recibo.requester || "—"],
-    ["Lançado em", formatarDataHora(recibo.createdAt)],
-    ["Prestador", nomePrestador],
-  ];
-  const coluna = largura / 2;
-  for (let i = 0; i < campos.length; i += 2) {
-    let menor = y;
-    campos.slice(i, i + 2).forEach(([rotulo, texto], lado) => {
-      const x = MARGEM + lado * coluna;
-      pagina.drawText(textoSeguro(fontes.normal, rotulo.toUpperCase()), { x, y, size: 7.5, font: fontes.normal, color: cores.APOIO });
-      menor = Math.min(menor, escrever(pagina, fontes.negrito, texto, x, y - 14, 11, coluna - 16));
-    });
-    y = menor - 12;
-  }
-
-  const blocos: [string, string][] = [["Descrição do serviço", recibo.description || "—"]];
-  if (recibo.reviewNote) blocos.push(["Devolutiva do escritório", recibo.reviewNote]);
-  blocos.push(["Comprovante", situacaoAnexo]);
-  for (const [rotulo, texto] of blocos) {
-    pagina.drawText(textoSeguro(fontes.normal, rotulo.toUpperCase()), { x: MARGEM, y, size: 7.5, font: fontes.normal, color: cores.APOIO });
-    y = escrever(pagina, fontes.normal, texto, MARGEM, y - 14, 10.5, largura) - 12;
-  }
-  rodape(pagina, fontes, `${recibo.id} · ${geradoEm()}`);
+function cores(lib: Lib) {
+  const hex = (valor: string): RGB => {
+    const n = Number.parseInt(valor.slice(1), 16);
+    return lib.rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255);
+  };
+  return {
+    laranja: hex("#F97316"),
+    laranjaClaro: hex("#FFF7ED"),
+    grafite: hex("#374151"),
+    grafiteEscuro: hex("#1F2937"),
+    grafiteClaro: hex("#F9FAFB"),
+    cinza: hex("#6B7280"),
+    cinzaClaro: hex("#E5E7EB"),
+    branco: hex("#FFFFFF"),
+    zebra: hex("#F8FAFC"),
+    faixa: hex("#F0F4F8"),
+    hex,
+  };
 }
 
-/** Página do recibo + comprovante, dentro de um PDF já aberto. */
-async function adicionarRecibo(lib: Lib, doc: Doc, recibo: Receipt, nomePrestador: string) {
-  const anexo = recibo.attachmentId ? await lerAnexo(recibo.attachmentId) : null;
-  const nome = recibo.attachmentName ?? "comprovante";
-  // Monta a página de dados depois de saber se o anexo entra.
-  const indice = doc.pdf.getPageCount();
-  let situacao = recibo.attachmentName ? `${nome} — nas páginas seguintes.` : "Nenhum arquivo anexado.";
-  if (recibo.attachmentName && !recibo.attachmentId) situacao = `${nome} — arquivo não guardado (enviado antes desta versão do portal; peça ao prestador para anexar de novo).`;
-  else if (recibo.attachmentId && !anexo) situacao = `${nome} — não foi possível ler o arquivo.`;
-  paginaDoRecibo(lib, doc, recibo, nomePrestador, situacao);
-  if (anexo && !(await lib.anexarAoPdf(doc.pdf, doc.fontes, { ...anexo, nome }, `Comprovante do recibo ${recibo.id}: ${nome}`))) {
-    // Formato que não vira PDF: a página de dados avisa.
-    doc.pdf.removePage(indice);
-    paginaDoRecibo(lib, doc, recibo, nomePrestador, `${nome} — formato que não pode ser convertido em PDF; baixe o arquivo original.`);
+/** Desenho em milímetros a partir do topo, como no gerador da referência. */
+function prancheta(lib: Lib, doc: Doc) {
+  const pagina = doc.pdf.addPage([lib.A4.largura, lib.A4.altura]);
+  const y = (mm: number) => lib.A4.altura - mm * MM;
+  const texto = (
+    conteudo: string,
+    x: number,
+    topo: number,
+    tamanho: number,
+    opcoes: { negrito?: boolean; cor?: RGB; alinhar?: "esquerda" | "direita" | "centro"; largura?: number } = {},
+  ) => {
+    const fonte = opcoes.negrito ? doc.fontes.negrito : doc.fontes.normal;
+    let seguro = lib.textoSeguro(fonte, conteudo);
+    if (opcoes.largura) {
+      // Corta com reticências o que não cabe na coluna.
+      while (seguro.length > 1 && fonte.widthOfTextAtSize(seguro, tamanho) > opcoes.largura * MM) seguro = `${seguro.slice(0, -2)}…`;
+    }
+    const largura = fonte.widthOfTextAtSize(seguro, tamanho);
+    const xPt = opcoes.alinhar === "direita" ? x * MM - largura : opcoes.alinhar === "centro" ? x * MM - largura / 2 : x * MM;
+    pagina.drawText(seguro, { x: xPt, y: y(topo), size: tamanho, font: fonte, color: opcoes.cor });
+  };
+  const retangulo = (x: number, topo: number, largura: number, altura: number, cor: RGB, borda?: RGB) =>
+    pagina.drawRectangle({ x: x * MM, y: y(topo + altura), width: largura * MM, height: altura * MM, color: cor, borderColor: borda, borderWidth: borda ? 1.2 : 0 });
+  const linha = (x1: number, topo: number, x2: number, cor: RGB, espessura = 0.5) =>
+    pagina.drawLine({ start: { x: x1 * MM, y: y(topo) }, end: { x: x2 * MM, y: y(topo) }, thickness: espessura * MM, color: cor });
+  /** Parágrafo com quebra de linha; devolve quantas linhas ocupou. */
+  const paragrafo = (conteudo: string, x: number, topo: number, tamanho: number, largura: number, cor: RGB) => {
+    const linhas = lib.quebrarLinhas(doc.fontes.normal, conteudo, tamanho, largura * MM);
+    linhas.forEach((parte, i) => pagina.drawText(parte, { x: x * MM, y: y(topo + i * tamanho * 0.45), size: tamanho, font: doc.fontes.normal, color: cor }));
+    return linhas.length;
+  };
+  return { pagina, texto, retangulo, linha, paragrafo };
+}
+
+const STATUS_EN: Record<string, string> = {
+  Rascunho: "Draft",
+  "Pendente de envio": "Pending",
+  Enviado: "Sent",
+  "Em análise": "Under review",
+  "Ajuste solicitado": "Adjustment requested",
+  Aprovado: "Approved",
+  Pago: "Paid",
+  Rejeitado: "Rejected",
+  Arquivado: "Archived",
+};
+
+const agoraTexto = (idioma: Idioma) =>
+  new Intl.DateTimeFormat(idioma === "en" ? "en-US" : "pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date());
+
+/** Recibo de despesa (o "Recibo PDF" da conferência). */
+function desenharRecibo(lib: Lib, doc: Doc, rec: Receipt, prestador: string, idioma: Idioma = "pt") {
+  const en = idioma === "en";
+  const c = cores(lib);
+  const p = prancheta(lib, doc);
+  p.retangulo(0, 0, W, 32, c.laranja);
+  p.texto("PNST ADVOGADOS", 15, 16, 18, { negrito: true, cor: c.branco });
+  p.texto(en ? "EXPENSE RECEIPT" : "RECIBO DE DESPESA", W - 15, 16, 13, { negrito: true, cor: c.branco, alinhar: "direita" });
+  p.texto(`${en ? "No." : "Nº"} ${rec.id}`, W - 15, 24, 9, { cor: c.branco, alinhar: "direita" });
+  p.retangulo(0, 32, W, 8, c.laranjaClaro);
+  p.texto(en ? "SERVICE INFORMATION" : "INFORMAÇÕES DO SERVIÇO PRESTADO", 15, 37.5, 8, { negrito: true, cor: c.laranja });
+  let y = 50;
+  const campo = (rotulo: string, valor: string) => {
+    p.texto(rotulo.toUpperCase(), 15, y, 8, { cor: c.cinza });
+    p.texto(valor || "—", 15, y + 6, 11, { negrito: true, cor: c.grafite, largura: W - 30 });
+    y += 16;
+  };
+  const campo2 = (r1: string, v1: string, r2: string, v2: string) => {
+    p.texto(r1.toUpperCase(), 15, y, 8, { cor: c.cinza });
+    p.texto(r2.toUpperCase(), W / 2 + 5, y, 8, { cor: c.cinza });
+    p.texto(v1 || "—", 15, y + 6, 11, { negrito: true, cor: c.grafite, largura: W / 2 - 20 });
+    p.texto(v2 || "—", W / 2 + 5, y + 6, 11, { negrito: true, cor: c.grafite, largura: W / 2 - 20 });
+    y += 16;
+  };
+  campo(en ? "Service Provider" : "Prestador de Serviço", prestador);
+  campo2(en ? "Service Date" : "Data do Serviço", formatarData(rec.serviceDate), en ? "Category" : "Categoria", rec.category);
+  campo2(en ? "Client" : "Cliente", rec.client, en ? "Case" : "Caso", rec.caseRef);
+  campo(en ? "Requested by" : "Solicitante", rec.requester);
+  p.texto(en ? "DESCRIPTION" : "DESCRIÇÃO", 15, y, 8, { cor: c.cinza });
+  const linhas = p.paragrafo(rec.description || "—", 15, y + 6, 10, W - 30, c.grafite);
+  y += 6 + linhas * 5 + 8;
+  p.retangulo(15, y, W - 30, 20, c.laranjaClaro, c.laranja);
+  p.texto(en ? "TOTAL AMOUNT" : "VALOR TOTAL", 25, y + 7, 8, { cor: c.cinza });
+  p.texto(formatBRL(rec.amount), 25, y + 16, 18, { negrito: true, cor: c.laranja });
+  p.texto(`Status: ${en ? STATUS_EN[rec.status] ?? rec.status : rec.status}`, W - 20, y + 14, 9, { cor: c.grafite, alinhar: "direita" });
+  y += 28;
+  const anexos = anexosDoRecibo(rec);
+  if (anexos.length) {
+    p.texto(en ? "ATTACHED DOCUMENTS" : "DOCUMENTOS ANEXADOS", 15, y, 8, { cor: c.cinza });
+    anexos.forEach((arquivo, i) => p.texto(`• ${arquivo.nome}${arquivo.id ? "" : en ? " (file not stored)" : " (arquivo não guardado)"}`, 15, y + 6 + i * 5, 9, { cor: c.grafite, largura: W - 30 }));
+  }
+  p.linha(15, 282, W - 15, c.laranja);
+  p.texto(`${en ? "Generated on" : "Gerado em"} ${agoraTexto(idioma)}`, W / 2, 288, 8, { cor: c.cinza, alinhar: "centro" });
+}
+
+/** Nota de despesas (português, ou inglês com os rótulos bilíngues da referência). */
+function desenharNota(lib: Lib, doc: Doc, rec: Receipt, idioma: Idioma) {
+  const pt = idioma === "pt";
+  const c = cores(lib);
+  const p = prancheta(lib, doc);
+  p.retangulo(0, 0, W, 32, c.grafiteEscuro);
+  p.texto("PNST ADVOGADOS", 15, 16, 18, { negrito: true, cor: c.branco });
+  p.texto(pt ? "NOTA DE DESPESAS" : "EXPENSES REPORT / NOTA DE DESPESAS", W - 15, 16, 12, { negrito: true, cor: c.branco, alinhar: "direita" });
+  p.retangulo(0, 32, W, 8, c.grafiteClaro);
+  p.texto(pt ? "DETALHES DA DESPESA" : "EXPENSE DETAILS / DETALHES DA DESPESA", 15, 37.5, 8, { negrito: true, cor: c.grafite });
+  let y = 50;
+  let par = false;
+  const linha = (rotulo: string, valor: string) => {
+    p.retangulo(15, y - 5, W - 30, 12, par ? c.grafiteClaro : c.branco);
+    par = !par;
+    p.texto(rotulo, 20, y + 1, 8, { negrito: true, cor: c.cinza });
+    p.texto(valor || "—", 20, y + 7, 10, { cor: c.grafite, largura: W - 40 });
+    y += 14;
+  };
+  linha(pt ? "DATA" : "DATE / DATA", formatarData(rec.serviceDate));
+  linha(pt ? "CLIENTE" : "CLIENT / CLIENTE", rec.client);
+  linha(pt ? "CASO" : "CASE / CASO", rec.caseRef);
+  p.retangulo(15, y, W - 30, 22, c.grafite);
+  p.texto(pt ? "VALOR TOTAL" : "TOTAL PAYMENT / VALOR TOTAL", 25, y + 8, 8, { negrito: true, cor: c.cinzaClaro });
+  p.texto(formatBRL(rec.amount), 25, y + 18, 20, { negrito: true, cor: c.branco });
+  y += 30;
+  linha(pt ? "DESCRIÇÃO" : "DESCRIPTION / DESCRIÇÃO", rec.description);
+  linha(pt ? "SOLICITANTE" : "REQUEST BY / SOLICITANTE", rec.requester);
+  p.linha(15, 282, W - 15, c.grafite);
+  p.texto(`${pt ? "Gerado em" : "Generated on"} ${agoraTexto(idioma)}`, W / 2, 288, 8, { cor: c.cinza, alinhar: "centro" });
+}
+
+/** Junta os documentos do recibo; os que não viram PDF (Word, Excel) são listados numa página de aviso. */
+async function anexarDocumentos(lib: Lib, doc: Doc, rec: Receipt) {
+  const fora: string[] = [];
+  for (const arquivo of anexosDoRecibo(rec)) {
+    if (!arquivo.id) {
+      fora.push(`${arquivo.nome} — arquivo não guardado (enviado antes desta versão do portal)`);
+      continue;
+    }
+    const lido = await lerAnexo(arquivo.id);
+    if (!lido) {
+      fora.push(`${arquivo.nome} — não foi possível ler o arquivo`);
+      continue;
+    }
+    if (!(await lib.anexarAoPdf(doc.pdf, doc.fontes, { ...lido, nome: arquivo.nome }, `Documento do recibo ${rec.id}: ${arquivo.nome}`)))
+      fora.push(`${arquivo.nome} — formato que não vira PDF; baixe o original na conferência`);
+  }
+  if (fora.length) {
+    const c = cores(lib);
+    const p = prancheta(lib, doc);
+    p.texto(`Documentos do recibo ${rec.id} fora deste PDF`, 15, 20, 12, { negrito: true, cor: c.grafite });
+    fora.forEach((linha, i) => p.texto(`• ${linha}`, 15, 30 + i * 6, 9, { cor: c.cinza, largura: W - 30 }));
   }
 }
 
+/** Recibo de despesa + documentos anexados. */
 export async function gerarPdfRecibo(recibo: Receipt, nomePrestador: string) {
   const lib = await pdfLib();
   const doc = await lib.novoPdf(`Recibo ${recibo.id}`);
-  await adicionarRecibo(lib, doc, recibo, nomePrestador);
+  desenharRecibo(lib, doc, recibo, nomePrestador);
+  await anexarDocumentos(lib, doc, recibo);
   return lib.paraBlob(doc.pdf);
 }
 
-/** O mês do prestador para a conferência: resumo, cada recibo com o comprovante e o documento de faturamento. */
-export async function gerarPdfLote(recibos: Receipt[], nomePrestador: string, competencia: string, fechamento: Closing | null) {
+/** Nota de despesas; unificada, vem depois do recibo. */
+export async function gerarNota(recibo: Receipt, nomePrestador: string, idioma: Idioma, unificar: boolean) {
   const lib = await pdfLib();
-  const doc = await lib.novoPdf(`Fechamento ${formatMonth(competencia)} — ${nomePrestador}`);
-  const { A4, MARGEM, cores, escrever, rodape, textoSeguro } = lib;
-  const { pdf, fontes } = doc;
-  const largura = A4.largura - MARGEM * 2;
-  const total = closingTotal(recibos);
-
-  let pagina = pdf.addPage([A4.largura, A4.altura]);
-  let y = A4.altura - MARGEM;
-  pagina.drawText("FECHAMENTO DO MÊS", { x: MARGEM, y, size: 8.5, font: fontes.negrito, color: cores.APOIO });
-  y -= 26;
-  y = escrever(pagina, fontes.negrito, `${nomePrestador} · ${formatMonth(competencia)}`, MARGEM, y, 18, largura);
-  y = escrever(pagina, fontes.normal, `${recibos.length} recibo(s) · total ${formatBRL(total)} (sem os devolvidos) · documento de faturamento: ${fechamento?.documentName ?? "não anexado"}`, MARGEM, y - 2, 10, largura, cores.APOIO);
-  y -= 14;
-  for (const recibo of recibos) {
-    if (y < 80) {
-      rodape(pagina, fontes, geradoEm());
-      pagina = pdf.addPage([A4.largura, A4.altura]);
-      y = A4.altura - MARGEM;
-    }
-    pagina.drawLine({ start: { x: MARGEM, y: y + 10 }, end: { x: A4.largura - MARGEM, y: y + 10 }, thickness: 0.5, color: cores.LINHA });
-    const valor = formatBRL(recibo.amount);
-    pagina.drawText(textoSeguro(fontes.negrito, `${recibo.id}  ${recibo.client}`).slice(0, 70), { x: MARGEM, y: y - 4, size: 10, font: fontes.negrito, color: cores.TINTA });
-    pagina.drawText(valor, { x: A4.largura - MARGEM - fontes.negrito.widthOfTextAtSize(valor, 10), y: y - 4, size: 10, font: fontes.negrito, color: cores.TINTA });
-    pagina.drawText(textoSeguro(fontes.normal, `${recibo.category} · ${formatarData(recibo.serviceDate)} · ${recibo.status}`), { x: MARGEM, y: y - 18, size: 8.5, font: fontes.normal, color: cores.APOIO });
-    y -= 34;
-  }
-  rodape(pagina, fontes, geradoEm());
-
-  for (const recibo of recibos) await adicionarRecibo(lib, doc, recibo, nomePrestador);
-
-  if (fechamento?.documentId) {
-    const documento = await lerAnexo(fechamento.documentId);
-    const nome = fechamento.documentName ?? "documento";
-    if (documento) await lib.anexarAoPdf(pdf, fontes, { ...documento, nome }, `Documento de faturamento: ${nome}`);
-  }
-  return lib.paraBlob(pdf);
+  const doc = await lib.novoPdf(`${unificar ? "Unificado" : "Nota de despesas"} ${recibo.id}`);
+  if (unificar) desenharRecibo(lib, doc, recibo, nomePrestador, idioma);
+  desenharNota(lib, doc, recibo, idioma);
+  return lib.paraBlob(doc.pdf);
 }
 
-/** Abre o recibo em PDF numa aba nova. */
+/**
+ * Documento único do mês: resumo, cada recibo com os documentos dele e, por
+ * fim, a NF/fatura/boleto do fechamento.
+ */
+export async function gerarPdfLote(recibos: Receipt[], nomePrestador: string, competencia: string, fechamento: Closing | null) {
+  const lib = await pdfLib();
+  const doc = await lib.novoPdf(`Fechamento ${formatMonthTitle(competencia)} — ${nomePrestador}`);
+  const c = cores(lib);
+  const total = closingTotal(recibos);
+  let p = prancheta(lib, doc);
+  p.retangulo(0, 0, W, 32, c.laranja);
+  p.texto("PNST ADVOGADOS", 15, 15, 18, { negrito: true, cor: c.branco });
+  p.texto("Documento único do fechamento", 15, 22, 11, { cor: c.branco });
+  p.texto(formatMonthTitle(competencia), W - 15, 15, 13, { negrito: true, cor: c.branco, alinhar: "direita" });
+  p.texto(nomePrestador, W - 15, 22, 10, { cor: c.branco, alinhar: "direita", largura: 100 });
+  p.texto(
+    `${recibos.length} recibo(s) · total ${formatBRL(total)} · ${documentosDoFechamento(fechamento).length} documento(s) do fechamento`,
+    15,
+    44,
+    10,
+    { cor: c.grafite },
+  );
+  let y = 54;
+  recibos.forEach((recibo, i) => {
+    if (y > 270) {
+      p = prancheta(lib, doc);
+      y = 20;
+    }
+    p.retangulo(15, y, W - 30, 10, i % 2 === 0 ? c.zebra : c.branco);
+    p.texto(formatarData(recibo.serviceDate), 17, y + 6.5, 8, { cor: c.grafite });
+    p.texto(recibo.client, 40, y + 6.5, 8, { cor: c.grafite, largura: 60 });
+    p.texto(recibo.category, 102, y + 6.5, 8, { cor: c.grafite, largura: 30 });
+    p.texto(recibo.status, 135, y + 6.5, 8, { cor: c.cinza, largura: 30 });
+    p.texto(formatBRL(recibo.amount), W - 17, y + 6.5, 8, { negrito: true, cor: c.grafite, alinhar: "direita" });
+    y += 10;
+  });
+  for (const recibo of recibos) {
+    desenharRecibo(lib, doc, recibo, nomePrestador);
+    await anexarDocumentos(lib, doc, recibo);
+  }
+  for (const documento of documentosDoFechamento(fechamento)) {
+    const lido = documento.id ? await lerAnexo(documento.id) : null;
+    if (lido) await lib.anexarAoPdf(doc.pdf, doc.fontes, { ...lido, nome: documento.nome }, `Documento do fechamento: ${documento.nome}`);
+  }
+  return lib.paraBlob(doc.pdf);
+}
+
+/** Relatório mensal de serviços do prestador (tabela, totais e assinaturas). */
+export async function gerarRelatorioMensal(itens: Receipt[], nomePrestador: string, mes: string) {
+  const lib = await pdfLib();
+  const doc = await lib.novoPdf(`Relatório mensal ${formatMonthTitle(mes)} — ${nomePrestador}`);
+  const c = cores(lib);
+  let p = prancheta(lib, doc);
+  p.retangulo(0, 0, W, 36, c.grafiteEscuro);
+  p.texto("PNST ADVOGADOS", 15, 15, 18, { negrito: true, cor: c.branco });
+  p.texto("Portal do Prestador de Serviços", 15, 22, 11, { cor: c.branco });
+  p.texto("RELATÓRIO MENSAL DE SERVIÇOS", W - 15, 15, 13, { negrito: true, cor: c.branco, alinhar: "direita" });
+  p.texto(formatMonthTitle(mes), W - 15, 22, 10, { cor: c.branco, alinhar: "direita" });
+  p.retangulo(0, 36, W, 14, c.faixa);
+  p.texto("PRESTADOR", 15, 42, 8, { negrito: true, cor: c.cinza });
+  p.texto(nomePrestador || "—", 15, 48, 10, { negrito: true, cor: c.grafite });
+
+  const ordenados = [...itens].sort((a, b) => a.serviceDate.localeCompare(b.serviceDate));
+  const total = ordenados.reduce((soma, recibo) => soma + recibo.amount, 0);
+  let y = 62;
+  const kpiW = (W - 35) / 2;
+  (
+    [
+      [String(ordenados.length), "QTD. SERVIÇOS", c.grafiteEscuro],
+      [formatBRL(total), "VALOR BRUTO", c.laranja],
+    ] as const
+  ).forEach(([valor, rotulo, cor], i) => {
+    const x = 15 + i * (kpiW + 5);
+    p.retangulo(x, y, kpiW, 16, cor);
+    p.texto(rotulo, x + kpiW / 2, y + 5.5, 7, { negrito: true, cor: c.branco, alinhar: "centro" });
+    p.texto(valor, x + kpiW / 2, y + 13, 11, { negrito: true, cor: c.branco, alinhar: "centro" });
+  });
+  y += 24;
+  const cabecalho = () => {
+    p.retangulo(15, y, W - 30, 7, c.grafiteEscuro);
+    (
+      [
+        [17, "DATA"],
+        [40, "CLIENTE"],
+        [79, "CATEGORIA"],
+        [110, "DESCRIÇÃO"],
+        [166, "VALOR"],
+        [189, "STATUS"],
+      ] as const
+    ).forEach(([x, rotulo]) => p.texto(rotulo, x, y + 4.5, 7, { negrito: true, cor: c.branco }));
+    y += 7;
+  };
+  cabecalho();
+  ordenados.forEach((recibo, i) => {
+    if (y > 270) {
+      p = prancheta(lib, doc);
+      y = 15;
+      cabecalho();
+    }
+    p.retangulo(15, y, W - 30, 10, i % 2 === 0 ? c.zebra : c.branco);
+    p.texto(formatarData(recibo.serviceDate), 17, y + 6.5, 7.5, { cor: c.grafite });
+    p.texto(recibo.client || "—", 40, y + 6.5, 7.5, { cor: c.grafite, largura: 37 });
+    p.texto(recibo.category || "—", 79, y + 6.5, 7.5, { cor: c.grafite, largura: 29 });
+    p.texto(recibo.description || "—", 110, y + 6.5, 7.5, { cor: c.grafite, largura: 54 });
+    p.texto(formatBRL(recibo.amount), 187, y + 6.5, 7.5, { negrito: true, cor: c.grafite, alinhar: "direita" });
+    p.texto(recibo.status.toUpperCase(), 189, y + 6.5, 6, { cor: c.grafite, largura: 18 });
+    y += 10;
+  });
+  if (y > 250) {
+    p = prancheta(lib, doc);
+    y = 15;
+  }
+  y += 2;
+  p.retangulo(15, y, W - 30, 10, c.grafiteEscuro);
+  p.texto("TOTAL GERAL", 17, y + 6.5, 8, { negrito: true, cor: c.branco });
+  p.texto(formatBRL(total), 187, y + 6.5, 8, { negrito: true, cor: c.branco, alinhar: "direita" });
+  y += 26;
+  p.linha(15, y, 95, c.grafiteEscuro, 0.4);
+  p.linha(115, y, W - 15, c.grafiteEscuro, 0.4);
+  p.texto(nomePrestador || "Prestador", 55, y + 5, 8, { cor: c.cinza, alinhar: "centro" });
+  p.texto("PNST Advogados", W / 2 + 50, y + 5, 8, { cor: c.cinza, alinhar: "centro" });
+  p.linha(15, 285, W - 15, c.grafiteEscuro, 0.3);
+  p.texto(`Gerado em ${formatarDataHora(new Date().toISOString())} — Portal do Prestador de Serviços`, W / 2, 289, 7.5, { cor: c.cinza, alinhar: "centro" });
+  return lib.paraBlob(doc.pdf);
+}
+
+const nomeDeArquivo = (texto: string) => texto.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\w.-]+/g, "-");
+
+/** Gera, baixa e devolve o relatório (para guardar na pasta do prestador). */
+export async function baixarRelatorioMensal(itens: Receipt[], nomePrestador: string, mes: string) {
+  const blob = await gerarRelatorioMensal(itens, nomePrestador, mes);
+  const nome = `Relatorio_${nomeDeArquivo(nomePrestador)}_${mes}.pdf`;
+  baixarBlob(blob, nome);
+  return new File([blob], `Relatorio_Mensal_${mes}.pdf`, { type: "application/pdf" });
+}
+
+/** Abre o recibo de despesa (com os documentos) em PDF numa aba nova. */
 export function abrirReciboEmPdf(recibo: Receipt, nomePrestador: string) {
-  return abrirGerado(() => gerarPdfRecibo(recibo, nomePrestador), `Recibo ${recibo.id}.pdf`);
+  return abrirGerado(() => gerarPdfRecibo(recibo, nomePrestador), `Recibo_${recibo.id}.pdf`);
+}
+
+export function abrirNota(recibo: Receipt, nomePrestador: string, idioma: Idioma, unificar: boolean) {
+  return abrirGerado(() => gerarNota(recibo, nomePrestador, idioma, unificar), `${unificar ? "Unificado" : "Notinha"}_${recibo.id}_${idioma}.pdf`);
 }
 
 export function abrirLoteEmPdf(recibos: Receipt[], nomePrestador: string, competencia: string, fechamento: Closing | null) {
-  return abrirGerado(() => gerarPdfLote(recibos, nomePrestador, competencia, fechamento), `Fechamento ${competencia} ${nomePrestador}.pdf`);
+  return abrirGerado(() => gerarPdfLote(recibos, nomePrestador, competencia, fechamento), `${nomeDeArquivo(nomePrestador)}_${competencia}_completo.pdf`);
 }
 
 /** A aba abre já no clique (depois de um await o navegador bloqueia) e recebe o PDF quando ele fica pronto. */

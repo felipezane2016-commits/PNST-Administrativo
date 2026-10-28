@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-  canEditReceipt,
-  officeCanChangeReceipt,
+  anexosDoRecibo,
+  closingSent,
   type Closing,
-  canSubmitClosing,
-  closingSteps,
   closingTotal,
+  portalKpis,
+  receiptSendAction,
+  receiptsForClosing,
+  shiftMonth,
+  statusDistribution,
+  validateClosing,
   competenciaOf,
   filterReceipts,
   formatDate,
@@ -13,7 +17,6 @@ import {
   nextReceiptId,
   parseAmount,
   receiptsOfCompetencia,
-  summarizeReceipts,
   validateReceiptDraft,
   type PrototypeReceiptStatus,
   type Receipt,
@@ -39,7 +42,7 @@ function receipt(
     description: "Serviço de exemplo",
     amount,
     status,
-    attachmentName: null,
+    anexos: [],
     reviewNote: null,
     createdAt: `${competencia}-10T12:00:00.000Z`,
   };
@@ -53,7 +56,7 @@ const draft: ReceiptDraft = {
   requester: "Dra. Helena",
   description: "Retirada de carta de sentença",
   amount: "480,00",
-  attachmentName: null,
+  anexos: [],
 };
 
 describe("Competências e identificadores", () => {
@@ -92,74 +95,83 @@ describe("Totais do fechamento", () => {
     receipt("REC-0002", "Enviado", 250.5),
     receipt("REC-0003", "Rascunho", 100),
     receipt("REC-0004", "Rejeitado", 900),
+    receipt("REC-0005", "Arquivado", 40),
   ];
 
-  it("soma apenas os recibos que não foram rejeitados", () => {
+  it("soma só o que entra no fechamento (sem rejeitados e arquivados)", () => {
     expect(closingTotal(receipts)).toBe(1350.5);
+    expect(receiptsForClosing(receipts, "2026-06").map((item) => item.id)).toEqual(["REC-0001", "REC-0002", "REC-0003"]);
   });
 
-  it("resume os valores por status", () => {
-    const summary = summarizeReceipts(receipts);
-    expect(summary.count).toBe(4);
-    expect(summary.gross).toBe(2250.5);
-    expect(summary.approvedAmount).toBe(1000);
-    expect(summary.sentAmount).toBe(250.5);
-    expect(summary.draftAmount).toBe(100);
-    expect(summary.rejectedAmount).toBe(900);
-    expect(summary.byStatus).toEqual({
-      Rascunho: 1,
-      Enviado: 1,
-      Aprovado: 1,
-      Rejeitado: 1,
+  it("calcula os nove indicadores do painel do prestador", () => {
+    const k = portalKpis(
+      [
+        receipt("A", "Rascunho", 100),
+        receipt("B", "Pendente de envio", 50),
+        receipt("C", "Ajuste solicitado", 30),
+        receipt("D", "Aprovado", 200),
+        receipt("E", "Pago", 300),
+        receipt("F", "Enviado", 20, "2026-05"),
+      ],
+      "2026-06"
+    );
+    expect(k).toEqual({
+      recibosDoMes: 5,
+      receitaMes: 680,
+      receitaAprovada: 500,
+      receitaPendente: 170,
+      ticketMedio: 136,
+      pendentesDeEnvio: 2,
+      ajustes: 1,
+      aprovados: 1,
+      pagos: 1,
     });
   });
 
-  it("marca as etapas concluídas na ordem do progresso", () => {
-    expect(closingSteps(["Rascunho"], false, false)).toEqual([
-      true,
-      false,
-      false,
-      false,
-    ]);
-    expect(closingSteps(["Aprovado", "Enviado"], true, false)).toEqual([
-      true,
-      true,
-      true,
-      false,
-    ]);
-    expect(closingSteps(["Aprovado"], true, true)).toEqual([
-      true,
-      true,
-      true,
-      true,
+  it("distribui por status só os que aparecem, na ordem do fluxo", () => {
+    expect(statusDistribution(receipts)).toEqual([
+      { status: "Rascunho", quantidade: 1 },
+      { status: "Enviado", quantidade: 1 },
+      { status: "Aprovado", quantidade: 1 },
+      { status: "Rejeitado", quantidade: 1 },
+      { status: "Arquivado", quantidade: 1 },
     ]);
   });
 });
 
 describe("Regras de envio", () => {
-  it("o prestador edita até o mês ser conferido; o escritório, até ser pago", () => {
-    const fechamento = (review: Closing["review"]): Closing => ({ prestadorId: "p", competencia: "2026-10", documentName: null, submitted: true, submittedAt: null, review });
-    expect(canEditReceipt(receipt("REC-0001", "Aprovado", 10))).toBe(true);
-    expect(canEditReceipt(receipt("REC-0002", "Rejeitado", 10), fechamento("Aguardando conferência"))).toBe(true);
-    expect(canEditReceipt(receipt("REC-0003", "Rascunho", 10), fechamento("Conferido"))).toBe(false);
-    expect(officeCanChangeReceipt(fechamento("Conferido"))).toBe(true);
-    expect(officeCanChangeReceipt(fechamento("Pago"))).toBe(false);
+  const fechamento = (review: Closing["review"]): Closing => ({ prestadorId: "p", competencia: "2026-10", submitted: review !== null, submittedAt: null, review });
+
+  it("rascunho fica pronto; ajuste solicitado volta para a conferência", () => {
+    expect(receiptSendAction(receipt("A", "Rascunho", 10))?.status).toBe("Pendente de envio");
+    expect(receiptSendAction(receipt("B", "Ajuste solicitado", 10))?.status).toBe("Enviado");
+    expect(receiptSendAction(receipt("C", "Aprovado", 10))).toBeNull();
   });
 
-  it("exige documento e ao menos um recibo aproveitável para enviar o fechamento", () => {
-    const valid = [receipt("REC-0001", "Aprovado", 10)];
-    expect(canSubmitClosing(valid, false, false)).toBe(false);
-    expect(canSubmitClosing([], true, false)).toBe(false);
-    expect(
-      canSubmitClosing([receipt("REC-0002", "Rejeitado", 10)], true, false)
-    ).toBe(false);
-    expect(canSubmitClosing(valid, true, false)).toBe(true);
+  it("um mês enviado não é enviado de novo, a não ser que tenha sido rejeitado", () => {
+    expect(closingSent(null)).toBe(false);
+    expect(closingSent(fechamento("Aguardando conferência"))).toBe(true);
+    expect(closingSent(fechamento("Pago"))).toBe(true);
+    expect(closingSent(fechamento("Rejeitado"))).toBe(false);
   });
 
-  it("não permite reenviar um fechamento já enviado", () => {
-    expect(
-      canSubmitClosing([receipt("REC-0001", "Aprovado", 10)], true, true)
-    ).toBe(false);
+  it("aponta inconsistências antes do envio", () => {
+    expect(validateClosing([{ ...receipt("A", "Rascunho", 0), client: "", description: "" }])).toEqual([
+      "Recibo A: cliente vazio",
+      "Recibo A: valor zerado",
+      "Recibo A: descrição vazia",
+    ]);
+  });
+
+  it("lê os documentos no formato antigo (um arquivo só) e no novo", () => {
+    expect(anexosDoRecibo({ attachmentName: "nf.pdf", attachmentId: "x" })).toEqual([{ id: "x", nome: "nf.pdf" }]);
+    expect(anexosDoRecibo({ anexos: [{ id: "a", nome: "a.pdf" }, { id: "b", nome: "b.xlsx" }] })).toHaveLength(2);
+    expect(anexosDoRecibo({ attachmentName: null })).toEqual([]);
+  });
+
+  it("anda de mês para trás e para frente, virando o ano", () => {
+    expect(shiftMonth("2026-01", -1)).toBe("2025-12");
+    expect(shiftMonth("2026-12", 1)).toBe("2027-01");
   });
 });
 
@@ -167,6 +179,7 @@ describe("Formulário de recibo", () => {
   it("interpreta valores digitados no padrão brasileiro e americano", () => {
     expect(parseAmount("1.280,50")).toBe(1280.5);
     expect(parseAmount("480")).toBe(480);
+    expect(parseAmount("1280.50")).toBe(1280.5);
     expect(Number.isNaN(parseAmount("abc"))).toBe(true);
   });
 
@@ -191,26 +204,17 @@ describe("Formulário de recibo", () => {
 
 describe("Busca e filtro da lista", () => {
   it("filtra por status", () => {
-    expect(
-      filterReceipts(DEMO_RECEIPTS, "", "Aprovado").map(item => item.id)
-    ).toEqual(["REC-0146", "REC-0145", "REC-0141", "REC-0139"]);
+    expect(filterReceipts(DEMO_RECEIPTS, { status: "Pendente de envio" }).map((item) => item.id)).toEqual(["REC-0147", "REC-0146"]);
   });
 
   it("busca por cliente, categoria, processo e número do recibo", () => {
-    expect(
-      filterReceipts(DEMO_RECEIPTS, "meridiano", "Todos").map(item => item.id)
-    ).toEqual(["REC-0145", "REC-0141"]);
-    expect(
-      filterReceipts(DEMO_RECEIPTS, "cartório", "Todos").map(item => item.id)
-    ).toEqual(["REC-0147"]);
-    expect(
-      filterReceipts(DEMO_RECEIPTS, "rec-0144", "Todos").map(item => item.id)
-    ).toEqual(["REC-0144"]);
+    expect(filterReceipts(DEMO_RECEIPTS, { busca: "meridiano" }).map((item) => item.id)).toEqual(["REC-0145", "REC-0141"]);
+    expect(filterReceipts(DEMO_RECEIPTS, { busca: "cartório" }).map((item) => item.id)).toEqual(["REC-0147"]);
+    expect(filterReceipts(DEMO_RECEIPTS, { busca: "rec-0144" }).map((item) => item.id)).toEqual(["REC-0144"]);
   });
 
-  it("combina busca e status", () => {
-    expect(
-      filterReceipts(DEMO_RECEIPTS, "vertti", "Rascunho").map(item => item.id)
-    ).toEqual(["REC-0148"]);
+  it("combina busca, status, categoria e mês", () => {
+    expect(filterReceipts(DEMO_RECEIPTS, { busca: "vertti", status: "Rascunho" }).map((item) => item.id)).toEqual(["REC-0148"]);
+    expect(filterReceipts(DEMO_RECEIPTS, { competencia: "2026-05", categoria: "Custas" }).map((item) => item.id)).toEqual(["REC-0139"]);
   });
 });

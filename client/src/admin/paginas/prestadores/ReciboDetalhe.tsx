@@ -1,15 +1,19 @@
 import { abrirAnexo } from "@/_core/armazenamento/anexos";
 import { formatarData, formatarDataHora } from "@/_core/tempo";
 import Painel from "@/admin/componentes/Painel";
-import { formatBRL, officeCanChangeReceipt, type Closing, type Receipt } from "@/lib/portal";
-import { abrirLoteEmPdf, abrirReciboEmPdf } from "@/lib/reciboPdf";
-import { FileDown, Paperclip, Pencil, Trash2 } from "lucide-react";
+import StatusPill from "@/components/StatusPill";
+import { anexosDoRecibo, formatBRL, type ArquivoAnexo, type Closing, type Receipt } from "@/lib/portal";
+import { abrirLoteEmPdf, abrirNota, abrirReciboEmPdf, type Idioma } from "@/lib/reciboPdf";
+import { AlertCircle, FileDown, FileText, Languages, Paperclip, Pencil, Receipt as IconeRecibo, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 /**
- * O recibo como o prestador lançou: todos os campos e o comprovante anexado,
- * que abre em PDF numa aba nova. Usado na conferência e no histórico.
+ * Peças da conferência e do histórico: o cartão de cada recibo (como na
+ * referência: dados, documentos enviados, Recibo PDF e Nota / Unificar), os
+ * botões de PDF e a confirmação de exclusão.
  */
+
+/** O recibo como o prestador lançou, em lista de campos (gaveta do histórico). */
 export function DetalhesRecibo({ recibo }: { recibo: Receipt }) {
   return (
     <dl className="data-list data-list-recibo">
@@ -30,21 +34,21 @@ export function DetalhesRecibo({ recibo }: { recibo: Receipt }) {
         <dd className="money">{formatBRL(recibo.amount)}</dd>
       </div>
       <div>
-        <dt>Processo / caso</dt>
+        <dt>Caso / Projeto</dt>
         <dd>{recibo.caseRef || "—"}</dd>
       </div>
       <div>
-        <dt>Quem pediu</dt>
+        <dt>Solicitante</dt>
         <dd>{recibo.requester || "—"}</dd>
       </div>
       <div className="data-list-cheio">
-        <dt>Descrição do serviço</dt>
+        <dt>Descrição</dt>
         <dd>{recibo.description || "—"}</dd>
       </div>
       <div className="data-list-cheio">
-        <dt>Comprovante</dt>
+        <dt>Documentos enviados</dt>
         <dd>
-          <BotaoAnexo id={recibo.attachmentId ?? null} nome={recibo.attachmentName} />
+          <ListaDocumentos arquivos={anexosDoRecibo(recibo)} />
         </dd>
       </div>
       <div className="data-list-cheio">
@@ -55,24 +59,59 @@ export function DetalhesRecibo({ recibo }: { recibo: Receipt }) {
   );
 }
 
-/** O recibo inteiro (dados + comprovante) num PDF. */
-export function BotaoReciboPdf({ recibo, nomePrestador, rotulo = "Recibo em PDF" }: { recibo: Receipt; nomePrestador: string; rotulo?: string }) {
-  return <BotaoPdf rotulo={rotulo} descricao={`${rotulo}: ${recibo.id}`} gerar={() => abrirReciboEmPdf(recibo, nomePrestador)} />;
+/** Documentos como botões que abrem em PDF (Word e Excel são baixados como estão). */
+export function ListaDocumentos({ arquivos, vazio = "Nenhum documento enviado" }: { arquivos: ArquivoAnexo[]; vazio?: string }) {
+  if (!arquivos.length)
+    return (
+      <span className="texto-apoio">
+        <AlertCircle size={13} strokeWidth={2} /> {vazio}
+      </span>
+    );
+  return (
+    <span className="documentos-lista">
+      {arquivos.map((arquivo, indice) => (
+        <BotaoAnexo key={`${arquivo.id ?? arquivo.nome}-${indice}`} id={arquivo.id} nome={arquivo.nome} rotulo={arquivo.nome} />
+      ))}
+    </span>
+  );
 }
 
-/** O mês do prestador num PDF só: resumo, recibos com comprovantes e o documento de faturamento. */
-export function BotaoLotePdf({ recibos, nomePrestador, competencia, fechamento }: { recibos: Receipt[]; nomePrestador: string; competencia: string; fechamento: Closing | null }) {
-  return <BotaoPdf rotulo="Mês completo em PDF" descricao="Mês completo em PDF" gerar={() => abrirLoteEmPdf(recibos, nomePrestador, competencia, fechamento)} />;
-}
-
-function BotaoPdf({ rotulo, descricao, gerar }: { rotulo: string; descricao: string; gerar: () => Promise<boolean> }) {
-  const [gerando, setGerando] = useState(false);
+/** Abre o arquivo; recibos antigos (só com o nome) dizem que o arquivo não foi guardado. */
+export function BotaoAnexo({ id, nome, rotulo = "Abrir em PDF" }: { id: string | null; nome: string | null; rotulo?: string }) {
   const [falhou, setFalhou] = useState(false);
+  if (!nome && !id) return <span className="texto-apoio">Nenhum arquivo anexado</span>;
+  if (!id)
+    return (
+      <span className="documento-botao documento-botao-sem-arquivo" title="Enviado antes desta versão do portal: peça ao prestador para anexar de novo.">
+        <Paperclip size={13} strokeWidth={2} /> {nome} — arquivo não guardado
+      </span>
+    );
   return (
     <span className="inline-row">
       <button
         type="button"
-        className="button-secondary button-compacto"
+        className="documento-botao"
+        onClick={async () => setFalhou(!(await abrirAnexo(id, nome ?? "anexo")))}
+        aria-label={`Abrir ${nome ?? "documento"}`}
+        title="Abrir em PDF"
+      >
+        <Paperclip size={13} strokeWidth={2} /> {rotulo}
+      </button>
+      {falhou ? <span className="field-error">Não foi possível abrir o arquivo.</span> : null}
+    </span>
+  );
+}
+
+/** Botão que gera um PDF e mostra "Gerando PDF..." enquanto isso. */
+function BotaoPdf({ rotulo, descricao, icone = FileDown, gerar, classe = "button-secondary button-compacto" }: { rotulo: string; descricao: string; icone?: typeof FileDown; gerar: () => Promise<boolean>; classe?: string }) {
+  const [gerando, setGerando] = useState(false);
+  const [falhou, setFalhou] = useState(false);
+  const Icone = icone;
+  return (
+    <span className="inline-row">
+      <button
+        type="button"
+        className={classe}
         disabled={gerando}
         aria-label={descricao}
         onClick={async () => {
@@ -81,76 +120,127 @@ function BotaoPdf({ rotulo, descricao, gerar }: { rotulo: string; descricao: str
           setGerando(false);
         }}
       >
-        <FileDown size={13} strokeWidth={2} /> {gerando ? "Gerando PDF..." : rotulo}
+        <Icone size={13} strokeWidth={2} /> {gerando ? "Gerando PDF..." : rotulo}
       </button>
       {falhou ? <span className="field-error">Não foi possível gerar o PDF.</span> : null}
     </span>
   );
 }
 
-/** Abre o arquivo; recibos antigos (só com o nome) dizem que o arquivo não foi guardado. */
-export function BotaoAnexo({ id, nome, rotulo = "Comprovante em PDF" }: { id: string | null; nome: string | null; rotulo?: string }) {
-  const [falhou, setFalhou] = useState(false);
-  if (!nome && !id) return <span className="texto-apoio">Nenhum arquivo anexado</span>;
-  if (!id)
-    return (
-      <span className="texto-apoio">
-        {nome} — arquivo não guardado (enviado antes desta versão do portal; peça ao prestador para anexar de novo).
-      </span>
-    );
+/** Recibo de despesa em PDF, com os documentos anexados em seguida. */
+export function BotaoReciboPdf({ recibo, nomePrestador, rotulo = "Recibo PDF" }: { recibo: Receipt; nomePrestador: string; rotulo?: string }) {
+  return <BotaoPdf rotulo={rotulo} descricao={`${rotulo}: ${recibo.id}`} icone={IconeRecibo} gerar={() => abrirReciboEmPdf(recibo, nomePrestador)} classe="button-secondary button-compacto botao-laranja" />;
+}
+
+/** O mês do prestador num PDF só: resumo, recibos com documentos e a NF do fechamento. */
+export function BotaoLotePdf({ recibos, nomePrestador, competencia, fechamento }: { recibos: Receipt[]; nomePrestador: string; competencia: string; fechamento: Closing | null }) {
+  return <BotaoPdf rotulo="Documento único (PDF)" descricao="Documento único do mês em PDF" gerar={() => abrirLoteEmPdf(recibos, nomePrestador, competencia, fechamento)} />;
+}
+
+/** Nota de despesas: português ou inglês, sozinha ou unificada com o recibo. */
+export function EscolherNota({ recibo, nomePrestador, aoFechar }: { recibo: Receipt; nomePrestador: string; aoFechar: () => void }) {
+  const [gerando, setGerando] = useState<string | null>(null);
+  async function gerar(idioma: Idioma, unificar: boolean) {
+    setGerando(`${idioma}-${unificar}`);
+    await abrirNota(recibo, nomePrestador, idioma, unificar);
+    setGerando(null);
+    aoFechar();
+  }
+  const botao = (idioma: Idioma, unificar: boolean, rotulo: string, primario = false) => (
+    <button
+      type="button"
+      className={primario ? "button-primary" : "button-secondary"}
+      disabled={Boolean(gerando)}
+      onClick={() => void gerar(idioma, unificar)}
+    >
+      {gerando === `${idioma}-${unificar}` ? "Gerando..." : rotulo}
+    </button>
+  );
   return (
-    <span className="inline-row">
-      <button
-        type="button"
-        className="button-secondary button-compacto"
-        onClick={async () => setFalhou(!(await abrirAnexo(id, nome ?? "anexo")))}
-        aria-label={`${rotulo}: ${nome ?? ""}`}
-      >
-        <Paperclip size={13} strokeWidth={2} /> {rotulo}
-      </button>
-      <span className="texto-apoio">{nome}</span>
-      {falhou ? <span className="field-error">Não foi possível abrir o arquivo.</span> : null}
-    </span>
+    <Painel rotulo={`Recibo ${recibo.id}`} titulo="Idioma da Nota de Despesas" descricao="Escolha o idioma para geração:" aoFechar={aoFechar}>
+      <div className="escolha-nota">
+        {botao("pt", false, "Português", true)}
+        {botao("en", false, "English")}
+      </div>
+      <p className="field-label espaco-acima">Ou gerar unificado (Recibo + Nota):</p>
+      <div className="escolha-nota">
+        {botao("pt", true, "PT Unificado")}
+        {botao("en", true, "EN Unificado")}
+      </div>
+      <p className="field-hint espaco-acima">Em inglês, os rótulos e o status são traduzidos; a descrição e o solicitante saem como o prestador escreveu.</p>
+    </Painel>
   );
 }
 
-/** Por que o escritório não pode mais mudar o recibo (ou null quando pode). */
-export function bloqueioDoRecibo(_recibo: Receipt, fechamento: Closing | null | undefined) {
-  return officeCanChangeReceipt(fechamento) ? null : "Mês já pago: o recibo não muda mais.";
-}
-
-/** Editar / excluir, com o motivo quando não pode. */
-export function AcoesRecibo({
+/** O cartão do recibo na conferência (como na referência). */
+export function CartaoRecibo({
   recibo,
+  nomePrestador,
   podeEditar,
   podeExcluir,
-  bloqueio,
   aoEditar,
   aoExcluir,
 }: {
   recibo: Receipt;
+  nomePrestador: string;
   podeEditar: boolean;
   podeExcluir: boolean;
-  /** Por que não dá para mexer (aprovado, lote conferido...). */
-  bloqueio: string | null;
   aoEditar: (recibo: Receipt) => void;
   aoExcluir: (recibo: Receipt) => void;
 }) {
-  if (!podeEditar && !podeExcluir) return null;
-  if (bloqueio) return <span className="texto-apoio">{bloqueio}</span>;
+  const [nota, setNota] = useState(false);
   return (
-    <span className="inline-row">
-      {podeEditar ? (
-        <button type="button" className="text-button text-button-neutro" onClick={() => aoEditar(recibo)} aria-label={`Editar ${recibo.id}`}>
-          <Pencil size={13} strokeWidth={2} /> Editar
-        </button>
-      ) : null}
-      {podeExcluir ? (
-        <button type="button" className="text-button text-button-perigo" onClick={() => aoExcluir(recibo)} aria-label={`Excluir ${recibo.id}`}>
-          <Trash2 size={13} strokeWidth={2} /> Excluir
-        </button>
-      ) : null}
-    </span>
+    <article className="recibo-cartao" aria-label={`Recibo ${recibo.id}`}>
+      <header className="recibo-cartao-topo">
+        <span className="doc-icon" aria-hidden="true">
+          <FileText size={16} strokeWidth={1.9} />
+        </span>
+        <div className="recibo-cartao-titulo">
+          <strong>
+            {recibo.client || "—"} {recibo.caseRef ? <span className="texto-apoio">· {recibo.caseRef}</span> : null}
+          </strong>
+          <span>
+            {formatarData(recibo.serviceDate)} · {recibo.category || "—"} · {recibo.id}
+          </span>
+        </div>
+        <div className="recibo-cartao-valor">
+          <strong className="money">{formatBRL(recibo.amount)}</strong>
+          <StatusPill status={recibo.status} />
+        </div>
+      </header>
+      <div className="recibo-cartao-corpo">
+        <p>{recibo.description || "—"}</p>
+        {recibo.requester ? <p className="texto-apoio">Solicitante: {recibo.requester}</p> : null}
+        {recibo.reviewNote && (recibo.status === "Ajuste solicitado" || recibo.status === "Rejeitado") ? (
+          <p className="cell-note">
+            <AlertCircle size={13} strokeWidth={2} /> {recibo.reviewNote}
+          </p>
+        ) : null}
+        <div className="recibo-cartao-docs">
+          <span className="eyebrow">Documentos enviados</span>
+          <ListaDocumentos arquivos={anexosDoRecibo(recibo)} />
+        </div>
+        <div className="recibo-cartao-acoes">
+          <BotaoReciboPdf recibo={recibo} nomePrestador={nomePrestador} />
+          <button type="button" className="button-secondary button-compacto" onClick={() => setNota(true)} aria-label={`Nota / Unificar: ${recibo.id}`}>
+            <Languages size={13} strokeWidth={2} /> Nota / Unificar
+          </button>
+          <span className="recibo-cartao-acoes-fim">
+            {podeEditar ? (
+              <button type="button" className="text-button text-button-neutro" onClick={() => aoEditar(recibo)} aria-label={`Editar ${recibo.id}`}>
+                <Pencil size={13} strokeWidth={2} /> Editar
+              </button>
+            ) : null}
+            {podeExcluir ? (
+              <button type="button" className="text-button text-button-perigo" onClick={() => aoExcluir(recibo)} aria-label={`Excluir ${recibo.id}`}>
+                <Trash2 size={13} strokeWidth={2} /> Excluir
+              </button>
+            ) : null}
+          </span>
+        </div>
+      </div>
+      {nota ? <EscolherNota recibo={recibo} nomePrestador={nomePrestador} aoFechar={() => setNota(false)} /> : null}
+    </article>
   );
 }
 
@@ -160,8 +250,7 @@ export function ConfirmarExclusaoRecibo({ recibo, nomePrestador, aoFechar, aoCon
       <p>
         <strong>{nomePrestador}</strong> · {recibo.client} — {formatBRL(recibo.amount)}, serviço em {formatarData(recibo.serviceDate)}.
       </p>
-      <p className="texto-perigo">O recibo sai da conferência e do portal do prestador, com o arquivo anexado. Não dá para desfazer.</p>
+      <p className="texto-perigo">O recibo sai da conferência e do portal do prestador, com os documentos anexados. Não dá para desfazer.</p>
     </Painel>
   );
 }
-

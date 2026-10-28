@@ -1,6 +1,6 @@
 import { criarColecao } from "@/_core/armazenamento/colecao";
-import type { Closing, Receipt } from "@/lib/portal";
-import { FECHAMENTOS_DEMO, PRESTADORES_DEMO, RECIBOS_DEMO } from "./dadosMock";
+import type { Closing, Receipt, RegistroRecibo } from "@/lib/portal";
+import { FECHAMENTOS_DEMO, PRESTADORES_DEMO, RECIBOS_DEMO, REGISTROS_DEMO } from "./dadosMock";
 import type { Prestador } from "./tipos";
 
 /** Donas únicas desses dados: o portal e o admin leem e gravam só por aqui. */
@@ -10,3 +10,8 @@ export const fechamentos = criarColecao<Closing[]>("fechamentos", () => FECHAMEN
   // Fechamento não tem id: é um por prestador e competência.
   remota: { tipo: "lista", tabela: "fechamentos", chave: (f: Closing) => `${f.prestadorId}|${f.competencia}` },
   vazio: () => [] });
+/** Histórico de atividades dos recibos (criação, edição, envio, conferência, pagamento). */
+export const registros = criarColecao<RegistroRecibo[]>("recibos-registros", () => REGISTROS_DEMO, {
+  remota: { tipo: "lista", tabela: "recibos_registros", maisNovosPrimeiro: true },
+  vazio: () => [],
+});

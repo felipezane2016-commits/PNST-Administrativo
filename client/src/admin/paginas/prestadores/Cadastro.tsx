@@ -12,7 +12,7 @@ import Selo, { type Tom } from "@/admin/componentes/Selo";
 import Vazio from "@/admin/componentes/Vazio";
 import { closingTotal, formatBRL, formatMonth, type Closing, type Receipt } from "@/lib/portal";
 import { registrarConvitePortal, salvarPrestador } from "@/modulos/prestadores/acoes";
-import { codigoDisponivel, montarLotes } from "@/modulos/prestadores/regras";
+import { codigoDisponivel, conferenciaAberta, montarLotes } from "@/modulos/prestadores/regras";
 import { CATEGORIAS_PRESTADOR, type CategoriaPrestador, type Prestador } from "@/modulos/prestadores/tipos";
 import { useDadosPrestadores } from "@/modulos/prestadores/usarDados";
 import { AlertTriangle, Check, ClipboardCheck, FileText, IdCard, Mail, MessageCircle, Pencil, Phone, Plus, Search, SearchX, Send, UserCheck, Users, X } from "lucide-react";
@@ -120,7 +120,7 @@ export default function Cadastro() {
   // Lotes que esperam o escritório, por prestador.
   const aguardando = new Map<string, number>();
   for (const lote of montarLotes(recibos, fechamentos, prestadores))
-    if (lote.situacao === "Aguardando conferência" || lote.pendentes > 0) aguardando.set(lote.prestador.id, (aguardando.get(lote.prestador.id) ?? 0) + 1);
+    if (conferenciaAberta(lote)) aguardando.set(lote.prestador.id, (aguardando.get(lote.prestador.id) ?? 0) + 1);
 
   const linhas = prestadores
     .map((prestador) => {

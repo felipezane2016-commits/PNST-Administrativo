@@ -50,7 +50,7 @@ export const DEMO_RECEIPTS: Receipt[] = [
     description:
       "Certidões de ônus reais em dois cartórios de registro de imóveis.",
     amount: 312.4,
-    status: "Enviado",
+    status: "Pendente de envio",
     attachmentName: "certidoes-cartorio.pdf",
     reviewNote: null,
     createdAt: "2026-06-16T17:05:00.000Z",
@@ -66,7 +66,7 @@ export const DEMO_RECEIPTS: Receipt[] = [
     requester: "Dra. Helena Prado",
     description: "Acompanhamento de audiência de conciliação com preposto.",
     amount: 1280.5,
-    status: "Aprovado",
+    status: "Pendente de envio",
     attachmentName: "nf-1280-junho.pdf",
     reviewNote: null,
     createdAt: "2026-06-11T11:40:00.000Z",
@@ -83,7 +83,7 @@ export const DEMO_RECEIPTS: Receipt[] = [
     description:
       "Deslocamento até Guarulhos para coleta de assinatura de testemunha.",
     amount: 186.9,
-    status: "Aprovado",
+    status: "Rascunho",
     attachmentName: "comprovante-corrida.pdf",
     reviewNote: null,
     createdAt: "2026-06-09T09:15:00.000Z",
@@ -99,7 +99,7 @@ export const DEMO_RECEIPTS: Receipt[] = [
     requester: "Dr. Rafael Bueno",
     description: "Postagem de 12 notificações com aviso de recebimento.",
     amount: 143.28,
-    status: "Rejeitado",
+    status: "Ajuste solicitado",
     attachmentName: "postagens-junho.pdf",
     reviewNote:
       "Anexe os códigos de rastreio individuais — o comprovante enviado está ilegível.",
