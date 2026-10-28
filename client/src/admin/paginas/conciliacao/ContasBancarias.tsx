@@ -17,7 +17,7 @@ import { rotuloConta } from "./comum";
 export default function ContasBancarias() {
   const { contas, extrato, importacoes } = useDadosConciliacao();
   const usuario = useUsuarioAtual();
-  const podeEditar = pode(usuario, "registros.editar");
+  const podeEditar = pode(usuario, "contas.conciliacao.editar");
   const [editando, setEditando] = useState<ContaBancaria | "nova" | null>(null);
   const nomeConta = new Map(contas.map((conta) => [conta.id, rotuloConta(conta)]));
 

@@ -5,7 +5,7 @@ import { lazy, Suspense, type ComponentType, type LazyExoticComponent } from "re
 import { Redirect, Route, Switch, useLocation } from "wouter";
 import CascaAdmin, { rotaInicial } from "./CascaAdmin";
 import Vazio from "./componentes/Vazio";
-import { moduloDaRota, rotaNovaDePagamentos } from "./menu";
+import { exigenciaDaRota, moduloDaRota, primeiraPaginaPermitida, rotaNovaDePagamentos } from "./menu";
 import VisaoGeral from "./paginas/VisaoGeral";
 import Cabecalho from "./componentes/Cabecalho";
 
@@ -73,19 +73,28 @@ export default function RotasAdmin() {
   // A visão geral é o destino padrão; quem não a vê cai na primeira área que vê.
   if (caminho === "/" && !veModulo(usuario, "visao")) return <Redirect to={rotaInicial(usuario)} />;
 
+  const exige = exigenciaDaRota(caminho);
+  const semPermissao = Boolean(exige && !pode(usuario, exige));
+  // Entrou pelo início do módulo (ex.: Prestadores → Painel) sem poder ver essa
+  // página: vai para a primeira do módulo que ela pode abrir.
+  if (semPermissao && (caminho === "/prestadores" || caminho === "/contas")) {
+    const destino = primeiraPaginaPermitida(caminho, (permissao) => pode(usuario, permissao));
+    if (destino && destino !== caminho) return <Redirect to={destino} replace />;
+  }
   const semAcesso =
     (modulo !== null && !veModulo(usuario, modulo)) ||
+    semPermissao ||
     (caminho.startsWith("/usuarios") && !pode(usuario, "usuarios.gerenciar"));
 
   return (
     <CascaAdmin usuario={usuario} titulo={pagina?.titulo ?? "Página não encontrada"}>
       {semAcesso ? (
         <section className="operations-surface">
-          <Cabecalho titulo={pagina?.titulo ?? "Sem acesso"} descricao="Área fora dos módulos liberados para você." />
+          <Cabecalho titulo={pagina?.titulo ?? "Sem acesso"} descricao="Página fora das permissões liberadas para você." />
           <Vazio
             icone={ShieldOff}
             titulo="Sem acesso a esta área"
-            texto="Seu usuário não tem este módulo liberado. Peça a um administrador em Usuários e acessos."
+            texto="Seu usuário não tem esta área ou esta permissão liberada. Peça a um administrador em Usuários e acessos."
           />
         </section>
       ) : (

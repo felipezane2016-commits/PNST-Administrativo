@@ -67,7 +67,7 @@ export default function Calendario() {
             <button type="button" className="icon-button" aria-label="Próximo mês" onClick={() => mudarMes(1)}>
               <ChevronRight size={17} strokeWidth={2} />
             </button>
-            {pode(usuario, "registros.editar") ? (
+            {pode(usuario, "calendario.editar") ? (
               <button type="button" className="button-primary" onClick={() => setAgendando(true)}>
                 <Plus size={15} strokeWidth={2.2} /> Agendar reunião
               </button>

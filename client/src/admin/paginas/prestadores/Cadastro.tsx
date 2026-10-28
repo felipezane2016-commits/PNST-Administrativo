@@ -105,7 +105,7 @@ export default function Cadastro() {
   const { prestadores, recibos, fechamentos } = useDadosPrestadores();
   const usuario = useUsuarioAtual();
   const [, navegar] = useLocation();
-  const podeEditar = pode(usuario, "registros.editar");
+  const podeEditar = pode(usuario, "prestadores.cadastro.editar");
   const contas = useContasDoPortal(usuario?.papel === "admin");
   const equipe = useColecao(usuarios);
   const donoNaEquipe = (email: string) => equipe.find((pessoa) => email && pessoa.email.trim().toLowerCase() === email.trim().toLowerCase())?.nome ?? null;

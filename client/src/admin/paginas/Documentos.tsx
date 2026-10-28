@@ -55,7 +55,7 @@ export default function Documentos() {
         titulo="Documentos"
         descricao={`${lista.length} arquivo(s) do escritório.`}
         acoes={
-          pode(usuario, "registros.editar") ? (
+          pode(usuario, "documentos.editar") ? (
             <label className="button-primary">
               <Upload size={15} strokeWidth={2} /> Enviar arquivo
               <input type="file" multiple onChange={enviar} className="sr-only" />
@@ -105,7 +105,7 @@ export default function Documentos() {
                 </div>
                 <div className="ged-line-meta">
                   <span className="status-pill status-neutral">{doc.categoria}</span>
-                  {pode(usuario, "registros.excluir") ? (
+                  {pode(usuario, "documentos.excluir") ? (
                     <button
                       type="button"
                       className="icon-button icon-button-danger"

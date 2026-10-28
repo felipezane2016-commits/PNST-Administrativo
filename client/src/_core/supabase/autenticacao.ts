@@ -105,6 +105,7 @@ export async function convidar(dados: {
   departamento?: string;
   papel?: string;
   modulos?: string[];
+  permissoes?: string[] | null;
   prestadorId?: string;
 }): Promise<string | null> {
   const { data, error } = await supabase().functions.invoke("convidar", { body: { ...dados, redirectTo: window.location.origin } });

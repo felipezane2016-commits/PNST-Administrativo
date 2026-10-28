@@ -1,3 +1,4 @@
+import { pode } from "@/_core/identidade/permissoes";
 import { gerarId, formatarDataHora } from "@/_core/tempo";
 import { useUsuarioAtual } from "@/_core/identidade/sessao";
 import Cabecalho from "@/admin/componentes/Cabecalho";
@@ -7,7 +8,6 @@ import Selo from "@/admin/componentes/Selo";
 import Vazio from "@/admin/componentes/Vazio";
 import { salvarFornecedor, validarFornecedor } from "@/modulos/pagamentos/acoes";
 import { useDadosPagamentos } from "@/modulos/pagamentos/colecoes";
-import { ehFinanceiro } from "@/modulos/pagamentos/regras";
 import type { Fornecedor } from "@/modulos/pagamentos/tipos";
 import { Building2, Plus, ShieldCheck } from "lucide-react";
 import { useState } from "react";
@@ -17,7 +17,7 @@ export default function Fornecedores() {
   const { fornecedores } = useDadosPagamentos();
   const [editando, setEditando] = useState<Fornecedor | "novo" | null>(null);
   const [validando, setValidando] = useState<Fornecedor | null>(null);
-  const podeEditar = ehFinanceiro(usuario);
+  const podeEditar = pode(usuario, "pagamentos.fornecedores");
   const pendentes = fornecedores.filter((f) => !f.dadosValidados);
 
   return (

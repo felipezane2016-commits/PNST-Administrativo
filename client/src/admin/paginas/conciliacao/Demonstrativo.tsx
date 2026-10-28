@@ -37,7 +37,7 @@ export default function Demonstrativo() {
   const checklist = checklistFechamento(conta, mes, d, informado, dados.fechamentos);
   const pronto = checklist.every((item) => item.ok);
   const nome = usuario?.nome ?? "";
-  const podeEditar = pode(usuario, "registros.editar");
+  const podeEditar = pode(usuario, "contas.conciliacao.editar");
   const ehRevisor = Boolean(usuario && (usuario.papel === "admin" || usuario.papel === "gestor"));
   const competencia = `${mes.slice(5)}/${mes.slice(0, 4)}`;
 

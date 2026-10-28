@@ -45,6 +45,9 @@ const TOM_SITUACAO: Record<SituacaoLote, Tom> = {
 
 const FILTROS: (SituacaoLote | "Todos")[] = ["Todos", "Aguardando conferência", "Em conferência", "Conferido", "Rejeitado", "Pago"];
 
+/** O que a pessoa pode fazer na conferência (permissões por ação). */
+type Acesso = { conferir: boolean; pagar: boolean; editar: boolean; excluir: boolean };
+
 type Confirmacao = { tipo: "finalizar" | "rejeitar" | "ajuste" | "pago" | "excluir"; lote: Lote };
 
 /** Conferência: os lotes (fechamentos enviados) e o que o escritório faz com cada um. */
@@ -52,8 +55,12 @@ export default function Conferencia() {
   const { prestadores, recibos, fechamentos } = useDadosPrestadores();
   const usuario = useUsuarioAtual();
   const autor = usuario?.nome ?? "Escritório";
-  const podeAgir = pode(usuario, "registros.editar");
-  const podeExcluir = pode(usuario, "registros.excluir");
+  const acesso: Acesso = {
+    conferir: pode(usuario, "prestadores.conferencia.conferir"),
+    pagar: pode(usuario, "prestadores.conferencia.pagar"),
+    editar: pode(usuario, "prestadores.recibos.editar"),
+    excluir: pode(usuario, "prestadores.recibos.excluir"),
+  };
   const [, navegar] = useLocation();
   const [editando, setEditando] = useState<Receipt | null>(null);
   const [removendo, setRemovendo] = useState<Receipt | null>(null);
@@ -168,22 +175,22 @@ export default function Conferencia() {
                         <button type="button" className="icon-button icon-button-pequeno" aria-label={`Abrir lote de ${lote.prestador.nome}`} title="Abrir" onClick={() => setChaveAberta(lote.chave)}>
                           <Eye size={14} strokeWidth={1.9} />
                         </button>
-                        {podeAgir && podeFinalizarConferencia(lote) ? (
+                        {acesso.conferir && podeFinalizarConferencia(lote) ? (
                           <button type="button" className="icon-button icon-button-pequeno icon-button-primario" aria-label={`Finalizar conferência de ${lote.prestador.nome}`} title="Finalizar conferência" onClick={() => setConfirmando({ tipo: "finalizar", lote })}>
                             <Check size={14} strokeWidth={2.2} />
                           </button>
                         ) : null}
-                        {podeAgir && conferenciaAberta(lote) ? (
+                        {acesso.conferir && conferenciaAberta(lote) ? (
                           <button type="button" className="icon-button icon-button-pequeno icon-button-danger" aria-label={`Rejeitar lote de ${lote.prestador.nome}`} title="Rejeitar" onClick={() => setConfirmando({ tipo: "rejeitar", lote })}>
                             <X size={14} strokeWidth={2.2} />
                           </button>
                         ) : null}
-                        {podeAgir && podeMarcarPago(lote) ? (
+                        {acesso.pagar && podeMarcarPago(lote) ? (
                           <button type="button" className="icon-button icon-button-pequeno icon-button-primario" aria-label={`Marcar como pago: ${lote.prestador.nome}`} title="Marcar como pago" onClick={() => setConfirmando({ tipo: "pago", lote })}>
                             <Banknote size={14} strokeWidth={1.9} />
                           </button>
                         ) : null}
-                        {podeExcluir ? (
+                        {acesso.excluir ? (
                           <button type="button" className="icon-button icon-button-pequeno icon-button-danger" aria-label={`Excluir lote de ${lote.prestador.nome}`} title="Excluir lote" onClick={() => setConfirmando({ tipo: "excluir", lote })}>
                             <Trash2 size={14} strokeWidth={1.9} />
                           </button>
@@ -202,8 +209,7 @@ export default function Conferencia() {
       {aberto && !editando && !removendo && !confirmando ? (
         <GavetaLote
           lote={aberto}
-          podeAgir={podeAgir}
-          podeExcluir={podeExcluir}
+          acesso={acesso}
           aoEditar={setEditando}
           aoExcluir={setRemovendo}
           aoConfirmar={(tipo) => setConfirmando({ tipo, lote: aberto })}
@@ -328,16 +334,14 @@ function ConfirmarLote({ confirmacao, aoFechar, aoConfirmar }: { confirmacao: Co
 
 function GavetaLote({
   lote,
-  podeAgir,
-  podeExcluir,
+  acesso,
   aoEditar,
   aoExcluir,
   aoConfirmar,
   aoFechar,
 }: {
   lote: Lote;
-  podeAgir: boolean;
-  podeExcluir: boolean;
+  acesso: Acesso;
   aoEditar: (recibo: Receipt) => void;
   aoExcluir: (recibo: Receipt) => void;
   aoConfirmar: (tipo: Confirmacao["tipo"]) => void;
@@ -359,7 +363,7 @@ function GavetaLote({
       aoFechar={aoFechar}
       rodape={
         <>
-          {podeExcluir ? (
+          {acesso.excluir ? (
             <button type="button" className="button-secondary botao-perigo" onClick={() => aoConfirmar("excluir")}>
               <Trash2 size={14} strokeWidth={2} /> Excluir lote
             </button>
@@ -367,8 +371,8 @@ function GavetaLote({
             <span />
           )}
           <span className="inline-row">
-            {!podeAgir ? <span className="field-hint alinhar-centro">Seu papel só permite consultar.</span> : null}
-            {podeAgir && aberta ? (
+            {!acesso.conferir && !acesso.pagar ? <span className="field-hint alinhar-centro">Suas permissões só permitem consultar.</span> : null}
+            {acesso.conferir && aberta ? (
               <>
                 <button type="button" className="button-secondary" onClick={() => aoConfirmar("ajuste")}>
                   <Undo2 size={14} strokeWidth={2} /> Solicitar ajuste
@@ -378,12 +382,12 @@ function GavetaLote({
                 </button>
               </>
             ) : null}
-            {podeAgir && podeFinalizarConferencia(lote) ? (
+            {acesso.conferir && podeFinalizarConferencia(lote) ? (
               <button type="button" className="button-primary" onClick={() => aoConfirmar("finalizar")}>
                 <Check size={15} strokeWidth={2.2} /> Finalizar conferência
               </button>
             ) : null}
-            {podeAgir && podeMarcarPago(lote) && usuario && !pedido ? (
+            {acesso.pagar && podeMarcarPago(lote) && usuario && !pedido ? (
               <button type="button" className="button-secondary" onClick={() => solicitarDoLote(lote, usuario)}>
                 <Wallet size={15} strokeWidth={2} /> Solicitar pagamento
               </button>
@@ -393,7 +397,7 @@ function GavetaLote({
                 <Wallet size={15} strokeWidth={2} /> {pedido.numero}: {pedido.status.toLowerCase()}
               </button>
             ) : null}
-            {podeAgir && podeMarcarPago(lote) ? (
+            {acesso.pagar && podeMarcarPago(lote) ? (
               <button type="button" className="button-primary" onClick={() => aoConfirmar("pago")}>
                 <Banknote size={15} strokeWidth={2} /> Marcar como pago
               </button>
@@ -466,8 +470,8 @@ function GavetaLote({
               key={recibo.id}
               recibo={recibo}
               nomePrestador={lote.prestador.nome}
-              podeEditar={podeAgir}
-              podeExcluir={podeExcluir}
+              podeEditar={acesso.editar}
+              podeExcluir={acesso.excluir}
               aoEditar={aoEditar}
               aoExcluir={aoExcluir}
             />

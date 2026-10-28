@@ -1,6 +1,6 @@
 import { criarColecao, useColecao } from "@/_core/armazenamento/colecao";
 import { MODO_REAL } from "@/_core/supabase/modo";
-import { MODULOS, type Modulo, type Usuario } from "./permissoes";
+import { ACOES, MODULOS, type Acao, type Modulo, type Usuario } from "./permissoes";
 
 const MODULOS_TODOS: Modulo[] = [
   "visao",
@@ -112,6 +112,8 @@ export const usuarios = criarColecao<Usuario[]>("usuarios", () => USUARIOS_DEMO,
             papel: linha.papel,
             // Só módulos que existem hoje (um módulo retirado some do perfil).
             modulos: (linha.modulos as string[]).filter((modulo): modulo is Modulo => modulo in MODULOS),
+            // Só ações que existem hoje; null = as do papel.
+            permissoes: Array.isArray(linha.permissoes) ? (linha.permissoes as string[]).filter((acao): acao is Acao => acao in ACOES) : null,
             ativo: linha.ativo,
             ultimoAcesso: linha.ultimo_acesso,
           }
@@ -122,6 +124,7 @@ export const usuarios = criarColecao<Usuario[]>("usuarios", () => USUARIOS_DEMO,
       departamento: usuario.departamento,
       papel: usuario.papel,
       modulos: usuario.modulos,
+      permissoes: usuario.permissoes ?? null,
       ativo: usuario.ativo,
     }),
   },

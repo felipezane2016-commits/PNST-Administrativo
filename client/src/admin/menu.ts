@@ -49,8 +49,8 @@ export const MENU_ESCRITORIO: Grupo[] = [
     itens: [
       { rota: "/", rotulo: "Visão geral", icone: LayoutDashboard, modulo: "visao" },
       { rota: "/notificacoes", rotulo: "Notificações", icone: Bell, contador: "notificacoes" },
-      { rota: "/calendario", rotulo: "Calendário", icone: CalendarDays, modulo: "calendario" },
-      { rota: "/documentos", rotulo: "Documentos", icone: FileText, modulo: "documentos" },
+      { rota: "/calendario", rotulo: "Calendário", icone: CalendarDays, modulo: "calendario", exige: "calendario.ver" },
+      { rota: "/documentos", rotulo: "Documentos", icone: FileText, modulo: "documentos", exige: "documentos.ver" },
     ],
   },
   {
@@ -83,16 +83,16 @@ export const MENUS_MODULO: MenuModulo[] = [
       {
         rotulo: "Principal",
         itens: [
-          { rota: "/prestadores", rotulo: "Painel", icone: Gauge },
-          { rota: "/prestadores/conferencia", rotulo: "Conferência", icone: ClipboardCheck, contador: "conferencia" },
-          { rota: "/prestadores/historico", rotulo: "Histórico", icone: History },
+          { rota: "/prestadores", rotulo: "Painel", icone: Gauge, exige: "prestadores.painel.ver" },
+          { rota: "/prestadores/conferencia", rotulo: "Conferência", icone: ClipboardCheck, contador: "conferencia", exige: "prestadores.conferencia.ver" },
+          { rota: "/prestadores/historico", rotulo: "Histórico", icone: History, exige: "prestadores.historico.ver" },
         ],
       },
       {
         rotulo: "Gestão",
         itens: [
-          { rota: "/prestadores/cadastro", rotulo: "Cadastro e acesso", icone: BookOpen },
-          { rota: "/prestadores/arquivos", rotulo: "Arquivos", icone: FolderOpen },
+          { rota: "/prestadores/cadastro", rotulo: "Cadastro e acesso", icone: BookOpen, exige: "prestadores.cadastro.ver" },
+          { rota: "/prestadores/arquivos", rotulo: "Arquivos", icone: FolderOpen, exige: "prestadores.arquivos.ver" },
         ],
       },
     ],
@@ -102,7 +102,7 @@ export const MENUS_MODULO: MenuModulo[] = [
     titulo: "Account Management",
     prefixo: "/contas",
     grupos: [
-      { rotulo: "Principal", itens: [{ rota: "/contas", rotulo: "Tarefas", icone: ListChecks, modulo: "contas" }] },
+      { rotulo: "Principal", itens: [{ rota: "/contas", rotulo: "Tarefas", icone: ListChecks, modulo: "contas", exige: "contas.tarefas.ver" }] },
       {
         // Sem módulo: quem pede pagamento de outra área também usa estas páginas
         // (as próprias páginas e o banco decidem o que cada um vê e faz).
@@ -117,19 +117,19 @@ export const MENUS_MODULO: MenuModulo[] = [
       {
         rotulo: "Banco Industrial",
         itens: [
-          { rota: "/contas/banco", rotulo: "Painel de câmbio", icone: LineChart, modulo: "contas" },
-          { rota: "/contas/taxas", rotulo: "Taxas diárias", icone: Banknote, modulo: "contas" },
-          { rota: "/contas/ordens", rotulo: "Ordens de pagamento", icone: ClipboardCheck, contador: "ordens", modulo: "contas" },
-          { rota: "/contas/economia", rotulo: "Economia potencial", icone: PiggyBank, modulo: "contas" },
+          { rota: "/contas/banco", rotulo: "Painel de câmbio", icone: LineChart, modulo: "contas", exige: "contas.banco.ver" },
+          { rota: "/contas/taxas", rotulo: "Taxas diárias", icone: Banknote, modulo: "contas", exige: "contas.banco.ver" },
+          { rota: "/contas/ordens", rotulo: "Ordens de pagamento", icone: ClipboardCheck, contador: "ordens", modulo: "contas", exige: "contas.banco.ver" },
+          { rota: "/contas/economia", rotulo: "Economia potencial", icone: PiggyBank, modulo: "contas", exige: "contas.banco.ver" },
         ],
       },
       {
         rotulo: "Conciliação bancária",
         itens: [
-          { rota: "/contas/conciliacao", rotulo: "Painel da conciliação", icone: Scale, modulo: "contas" },
-          { rota: "/contas/conciliacao/conciliar", rotulo: "Conciliar", icone: GitCompareArrows, modulo: "contas" },
-          { rota: "/contas/conciliacao/demonstrativo", rotulo: "Demonstrativo", icone: FileSpreadsheet, modulo: "contas" },
-          { rota: "/contas/conciliacao/contas", rotulo: "Contas bancárias", icone: Landmark, modulo: "contas" },
+          { rota: "/contas/conciliacao", rotulo: "Painel da conciliação", icone: Scale, modulo: "contas", exige: "contas.conciliacao.ver" },
+          { rota: "/contas/conciliacao/conciliar", rotulo: "Conciliar", icone: GitCompareArrows, modulo: "contas", exige: "contas.conciliacao.ver" },
+          { rota: "/contas/conciliacao/demonstrativo", rotulo: "Demonstrativo", icone: FileSpreadsheet, modulo: "contas", exige: "contas.conciliacao.ver" },
+          { rota: "/contas/conciliacao/contas", rotulo: "Contas bancárias", icone: Landmark, modulo: "contas", exige: "contas.conciliacao.ver" },
         ],
       },
     ],
@@ -168,4 +168,21 @@ export function itemAtivo(itens: ItemMenu[], caminho: string) {
   return itens
     .filter((item) => (item.rota === "/" ? caminho === "/" : casa(caminho, item.rota)))
     .sort((a, b) => b.rota.length - a.rota.length)[0];
+}
+
+/**
+ * A permissão que a página exige (a do item de menu mais específico que casa
+ * com o endereço). Ex.: /contas/ordens/123 exige o mesmo que /contas/ordens.
+ */
+export function exigenciaDaRota(caminho: string): Permissao | undefined {
+  const itens = [...MENU_ESCRITORIO, ...MENUS_MODULO.map((menu) => ({ rotulo: menu.titulo, itens: menu.grupos.flatMap((grupo) => grupo.itens) }))].flatMap((grupo) => grupo.itens);
+  const casam = itens.filter((item) => caminho === item.rota || (item.rota !== "/" && caminho.startsWith(`${item.rota}/`)));
+  // Mesma rota no escritório e no módulo (ex.: /prestadores): vale a do módulo, que tem a permissão.
+  return casam.sort((a, b) => b.rota.length - a.rota.length || Number(Boolean(b.exige)) - Number(Boolean(a.exige)))[0]?.exige;
+}
+
+/** Primeira página do módulo que a pessoa pode abrir (quando a inicial está bloqueada). */
+export function primeiraPaginaPermitida(prefixo: string, pode: (exige: Permissao) => boolean) {
+  const menu = MENUS_MODULO.find((item) => item.prefixo === prefixo);
+  return menu?.grupos.flatMap((grupo) => grupo.itens).find((item) => !item.exige || pode(item.exige))?.rota ?? null;
 }

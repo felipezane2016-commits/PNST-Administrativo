@@ -26,7 +26,7 @@ function numero(texto: string) {
 export default function Taxas() {
   const { taxas: lista } = useDadosContas();
   const usuario = useUsuarioAtual();
-  const podeEditar = pode(usuario, "registros.editar");
+  const podeEditar = pode(usuario, "contas.banco.editar");
   const [mes, setMes] = useState(HOJE.slice(0, 7));
   const [data, setData] = useState(HOJE);
   const [horario, setHorario] = useState("10:30");
@@ -216,7 +216,7 @@ export default function Taxas() {
                     <td>{formatarTaxa(taxa.itauEur)}</td>
                     <td className="money">{formatarDelta(spread(taxa, "EUR"))}</td>
                     <td>
-                      {pode(usuario, "registros.excluir") ? (
+                      {pode(usuario, "contas.banco.excluir") ? (
                         <button type="button" className="icon-button icon-button-danger" aria-label={`Excluir taxa de ${formatarData(taxa.data)}`} onClick={() => taxas.atualizar((atual) => atual.filter((item) => item.id !== taxa.id))}>
                           <Trash2 size={14} strokeWidth={1.9} />
                         </button>

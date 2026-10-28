@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { pode, veModulo, type Usuario } from "../client/src/_core/identidade/permissoes";
+import { permissoesEfetivas, pode, veModulo, type Acao, type Usuario } from "../client/src/_core/identidade/permissoes";
+import { exigenciaDaRota } from "../client/src/admin/menu";
 import type { Closing, Receipt } from "../client/src/lib/portal";
 import { economiaPotencial, mediaMovel, spread } from "../client/src/modulos/contas/regras";
 import type { Taxa, TarefaConta } from "../client/src/modulos/contas/tipos";
@@ -129,18 +130,46 @@ describe("Permissões", () => {
     id: "u", nome: "U", email: "u@x", senha: "x", departamento: "", papel, modulos, ativo, ultimoAcesso: null,
   });
 
-  it("o papel decide o que a pessoa pode fazer", () => {
+  it("sem ajuste na ficha, o papel decide o que a pessoa pode fazer", () => {
+    const tudo: Usuario["modulos"] = ["prestadores", "contas", "calendario", "documentos"];
     expect(pode(usuario("admin", []), "usuarios.gerenciar")).toBe(true);
     expect(pode(usuario("gestor", []), "usuarios.gerenciar")).toBe(false);
-    expect(pode(usuario("operador", []), "registros.editar")).toBe(true);
-    expect(pode(usuario("operador", []), "registros.excluir")).toBe(false);
-    expect(pode(usuario("viewer", []), "registros.editar")).toBe(false);
+    expect(pode(usuario("operador", tudo), "prestadores.conferencia.conferir")).toBe(true);
+    expect(pode(usuario("operador", tudo), "prestadores.recibos.excluir")).toBe(false);
+    expect(pode(usuario("gestor", tudo), "prestadores.recibos.excluir")).toBe(true);
+    expect(pode(usuario("viewer", tudo), "prestadores.conferencia.conferir")).toBe(false);
+    expect(pode(usuario("viewer", tudo), "prestadores.conferencia.ver")).toBe(true);
+    // Financeiro = edita e tem o Account Management.
+    expect(pode(usuario("operador", ["contas"]), "pagamentos.pagar")).toBe(true);
+    expect(pode(usuario("operador", ["prestadores"]), "pagamentos.pagar")).toBe(false);
+    expect(pode(usuario("viewer", []), "pagamentos.pedir")).toBe(true);
+    expect(pode(usuario("gestor", tudo), "pagamentos.regras")).toBe(false);
+  });
+
+  it("ajuste na ficha substitui o padrão do papel; a área continua obrigatória", () => {
+    const conferente = { ...usuario("viewer", ["prestadores"]), permissoes: ["prestadores.conferencia.ver", "prestadores.conferencia.conferir"] as Acao[] };
+    expect(pode(conferente, "prestadores.conferencia.conferir")).toBe(true);
+    expect(pode(conferente, "prestadores.arquivos.ver")).toBe(false);
+    expect(pode(conferente, "pagamentos.pedir")).toBe(false);
+    const semArea = { ...conferente, modulos: [] as Usuario["modulos"] };
+    expect(pode(semArea, "prestadores.conferencia.conferir")).toBe(false);
+    // Administrador tem tudo, mesmo com uma lista curta.
+    expect(pode({ ...usuario("admin", ["prestadores"]), permissoes: [] }, "prestadores.recibos.excluir")).toBe(true);
+    expect(permissoesEfetivas(conferente)).toEqual(["prestadores.conferencia.ver", "prestadores.conferencia.conferir"]);
   });
 
   it("o módulo decide onde ela entra; inativo não entra em nada", () => {
     expect(veModulo(usuario("admin", ["prestadores"]), "prestadores")).toBe(true);
     expect(veModulo(usuario("admin", ["prestadores"]), "contas")).toBe(false);
     expect(veModulo(usuario("admin", ["prestadores"], false), "prestadores")).toBe(false);
-    expect(pode(usuario("admin", ["prestadores"], false), "registros.editar")).toBe(false);
+    expect(pode(usuario("admin", ["prestadores"], false), "prestadores.conferencia.ver")).toBe(false);
+  });
+
+  it("cada página pede a permissão do item de menu mais específico", () => {
+    expect(exigenciaDaRota("/prestadores")).toBe("prestadores.painel.ver");
+    expect(exigenciaDaRota("/prestadores/arquivos")).toBe("prestadores.arquivos.ver");
+    expect(exigenciaDaRota("/contas/ordens/ord-1")).toBe("contas.banco.ver");
+    expect(exigenciaDaRota("/contas/pagamentos/aprovacoes")).toBeUndefined();
+    expect(exigenciaDaRota("/contas")).toBe("contas.tarefas.ver");
   });
 });

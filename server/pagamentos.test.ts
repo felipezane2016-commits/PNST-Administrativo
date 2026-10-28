@@ -118,7 +118,7 @@ describe("fluxo completo pelas ações", () => {
   it("pedido de outra área → conferência → aprovação → pagamento no razão", () => {
     const novo = solicitarPagamento(pedido(), helena);
     expect(novo.status).toBe("Em conferência");
-    expect(conferir(novo.id, helena)).toMatch(/financeiro/);
+    expect(conferir(novo.id, helena)).toMatch(/permissão para conferir/);
     expect(conferir(novo.id, fernanda)).toBeNull();
     expect(aprovar(novo.id, fernanda)).toMatch(/conferiu/);
     expect(aprovar(novo.id, bianca)).toMatch(/gestor ou administrador/);

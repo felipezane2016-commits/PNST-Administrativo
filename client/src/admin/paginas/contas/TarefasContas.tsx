@@ -16,7 +16,7 @@ type Filtro = "pendentes" | "todas" | "concluidas";
 export default function TarefasContas() {
   const { tarefas } = useDadosContas();
   const usuario = useUsuarioAtual();
-  const podeEditar = pode(usuario, "registros.editar");
+  const podeEditar = pode(usuario, "contas.tarefas.editar");
   const [filtro, setFiltro] = useState<Filtro>("pendentes");
   const [editando, setEditando] = useState<TarefaConta | "nova" | null>(null);
 
@@ -102,7 +102,7 @@ export default function TarefasContas() {
           })}
         </div>
       </section>
-      {editando ? <FormularioTarefaConta tarefa={editando === "nova" ? null : editando} podeExcluir={pode(usuario, "registros.excluir")} aoFechar={() => setEditando(null)} /> : null}
+      {editando ? <FormularioTarefaConta tarefa={editando === "nova" ? null : editando} podeExcluir={pode(usuario, "contas.tarefas.excluir")} aoFechar={() => setEditando(null)} /> : null}
     </>
   );
 }

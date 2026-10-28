@@ -23,7 +23,7 @@ export default function RegrasAprovacao() {
   const { config } = useDadosPagamentos();
   const pessoas = useColecao(usuarios);
   const elegiveis = pessoas.filter((p) => p.ativo && (p.papel === "admin" || p.papel === "gestor"));
-  const podeEditar = pode(usuario, "usuarios.gerenciar") || usuario?.id === config.aprovadorId;
+  const podeEditar = pode(usuario, "pagamentos.regras") || usuario?.id === config.aprovadorId;
   const [dados, setDados] = useState(config);
   const [salvo, setSalvo] = useState(false);
   const vigente = pessoas.find((p) => p.id === aprovadorVigente(config, HOJE));

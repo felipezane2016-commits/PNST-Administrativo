@@ -1,6 +1,6 @@
 import { gravarItem, useColecao } from "@/_core/armazenamento/colecao";
 import { comecarDoZero, restaurarDemonstracao } from "@/_core/armazenamento/semente";
-import { iniciais, MODULOS, PAPEIS, type Modulo, type Papel, type Usuario } from "@/_core/identidade/permissoes";
+import { ACOES, acoesDaArea, AREAS, iniciais, MODULOS, PAPEIS, padraoDoPapel, permissoesEfetivas, type Acao, type Area, type Modulo, type Papel, type Usuario } from "@/_core/identidade/permissoes";
 import { sessaoAdmin, useUsuarioAtual, usuarios } from "@/_core/identidade/sessao";
 import { formatarDataHora, gerarId } from "@/_core/tempo";
 import Cabecalho from "@/admin/componentes/Cabecalho";
@@ -72,7 +72,7 @@ export default function Usuarios() {
                 <th>Usuário</th>
                 <th>Departamento</th>
                 <th>Papel</th>
-                <th>Módulos</th>
+                <th>Áreas e permissões</th>
                 <th>Status</th>
                 <th>Último acesso</th>
                 <th>
@@ -104,6 +104,9 @@ export default function Usuarios() {
                         </span>
                       ))}
                     </div>
+                    <span className="texto-apoio">
+                      {usuario.papel === "admin" ? "Todas as permissões" : usuario.permissoes ? `Permissões personalizadas (${permissoesEfetivas(usuario).length})` : "Permissões do papel"}
+                    </span>
                   </td>
                   <td>{usuario.ativo ? <Selo tom="green">Ativo</Selo> : <Selo tom="neutral">Inativo</Selo>}</td>
                   <td>{usuario.ultimoAcesso ? formatarDataHora(usuario.ultimoAcesso) : "—"}</td>
@@ -155,7 +158,7 @@ function FormularioUsuario({ usuario, todos, euId, aoFechar }: { usuario: Usuari
       encontrados.email = "Já existe um usuário com este e-mail.";
     // No modo real a senha é da pessoa: ela cria pelo link do convite.
     if (!MODO_REAL && (!usuario || novaSenha) && novaSenha.length < 6) encontrados.senha = "Mínimo de 6 caracteres.";
-    if (dados.modulos.length === 0) encontrados.modulos = "Libere ao menos um módulo.";
+    if (dados.modulos.length === 0) encontrados.modulos = "Libere ao menos uma área.";
     // Quem edita a si mesmo não pode se rebaixar nem se desativar: ficaria sem
     // ninguém para desfazer o erro.
     if (souEu && (dados.papel !== "admin" || !dados.ativo)) encontrados.papel = "Você não pode tirar o próprio acesso de administrador.";
@@ -166,7 +169,7 @@ function FormularioUsuario({ usuario, todos, euId, aoFechar }: { usuario: Usuari
     if (MODO_REAL && !usuario) {
       setEnviando(true);
       const { convidar } = await import("@/_core/supabase/autenticacao");
-      const erro = await convidar({ tipo: "equipe", email: dados.email.trim(), nome: dados.nome.trim(), departamento: dados.departamento, papel: dados.papel, modulos: dados.modulos });
+      const erro = await convidar({ tipo: "equipe", email: dados.email.trim(), nome: dados.nome.trim(), departamento: dados.departamento, papel: dados.papel, modulos: dados.modulos, permissoes: dados.permissoes ?? null });
       setEnviando(false);
       if (erro) return setErroConvite(erro);
       aoFechar();
@@ -225,29 +228,7 @@ function FormularioUsuario({ usuario, todos, euId, aoFechar }: { usuario: Usuari
           </select>
         )}
       </Campo>
-      <fieldset className="field-group field-group-fieldset" aria-describedby={erros.modulos ? "us-modulos-erro" : undefined}>
-        <legend className="field-label rotulo-acima">
-          Módulos liberados
-        </legend>
-        <div className="filter-chips">
-          {(Object.keys(MODULOS) as Modulo[]).map((modulo) => (
-            <button
-              key={modulo}
-              type="button"
-              className={dados.modulos.includes(modulo) ? "filter-chip filter-chip-active" : "filter-chip"}
-              aria-pressed={dados.modulos.includes(modulo)}
-              onClick={() => alternarModulo(modulo)}
-            >
-              {MODULOS[modulo]}
-            </button>
-          ))}
-        </div>
-        {erros.modulos ? (
-          <span id="us-modulos-erro" className="field-error" role="alert">
-            {erros.modulos}
-          </span>
-        ) : null}
-      </fieldset>
+      <Permissoes dados={dados} erroModulos={erros.modulos} alternarModulo={alternarModulo} mudar={(permissoes) => setDados((atual) => ({ ...atual, permissoes }))} />
       <div className="toggle-row">
         <div>
           <strong className="field-label" id="us-ativo-rotulo">
@@ -258,5 +239,124 @@ function FormularioUsuario({ usuario, todos, euId, aoFechar }: { usuario: Usuari
         <button type="button" className="switch" role="switch" aria-checked={dados.ativo} aria-labelledby="us-ativo-rotulo" onClick={() => setDados({ ...dados, ativo: !dados.ativo })} />
       </div>
     </Painel>
+  );
+}
+
+/**
+ * Permissões da pessoa: cada área tem a chave de acesso (módulo) e as ações.
+ * Sem mexer, valem as do papel; ao marcar ou desmarcar qualquer caixa, a ficha
+ * passa a ter permissões personalizadas (dá para voltar ao padrão).
+ */
+function Permissoes({
+  dados,
+  erroModulos,
+  alternarModulo,
+  mudar,
+}: {
+  dados: Usuario;
+  erroModulos?: string;
+  alternarModulo: (modulo: Modulo) => void;
+  mudar: (permissoes: Acao[] | null) => void;
+}) {
+  const admin = dados.papel === "admin";
+  const efetivas = new Set(permissoesEfetivas(dados));
+  const personalizadas = Boolean(dados.permissoes) && !admin;
+
+  function alternar(acao: Acao) {
+    const atuais = new Set(permissoesEfetivas(dados));
+    if (atuais.has(acao)) atuais.delete(acao);
+    else atuais.add(acao);
+    mudar(Array.from(atuais));
+  }
+
+  function marcarArea(area: Area, marcar: boolean) {
+    const atuais = new Set(permissoesEfetivas(dados));
+    acoesDaArea(area).forEach((acao) => (marcar ? atuais.add(acao) : atuais.delete(acao)));
+    mudar(Array.from(atuais));
+  }
+
+  return (
+    <fieldset className="field-group field-group-fieldset permissoes" aria-describedby={erroModulos ? "us-modulos-erro" : undefined}>
+      <legend className="field-label rotulo-acima">Áreas e permissões</legend>
+      <p className="field-hint">
+        {admin
+          ? "Administrador tem todas as permissões das áreas liberadas, e gerencia usuários."
+          : personalizadas
+            ? "Permissões personalizadas para esta pessoa."
+            : `Usando as permissões padrão do papel ${PAPEIS[dados.papel].nome}. Marque ou desmarque para personalizar.`}
+        {personalizadas ? (
+          <>
+            {" "}
+            <button type="button" className="text-button" onClick={() => mudar(null)}>
+              Voltar ao padrão do papel
+            </button>
+          </>
+        ) : null}
+      </p>
+
+      <div className="permissoes-area">
+        <div className="permissoes-area-topo">
+          <strong>{MODULOS.visao}</strong>
+          <button
+            type="button"
+            className="switch"
+            role="switch"
+            aria-checked={dados.modulos.includes("visao")}
+            aria-label={`Acesso à ${MODULOS.visao}`}
+            onClick={() => alternarModulo("visao")}
+          />
+        </div>
+      </div>
+
+      {(Object.keys(AREAS) as Area[]).map((area) => {
+        const { nome, modulo } = AREAS[area];
+        const liberada = !modulo || dados.modulos.includes(modulo);
+        const acoes = acoesDaArea(area);
+        const todas = acoes.every((acao) => efetivas.has(acao));
+        return (
+          <div className={liberada ? "permissoes-area" : "permissoes-area permissoes-area-fechada"} key={area}>
+            <div className="permissoes-area-topo">
+              <strong>{nome}</strong>
+              {liberada && !admin ? (
+                <button type="button" className="text-button" onClick={() => marcarArea(area, !todas)}>
+                  {todas ? "Desmarcar todas" : "Marcar todas"}
+                </button>
+              ) : null}
+              {modulo ? (
+                <button
+                  type="button"
+                  className="switch"
+                  role="switch"
+                  aria-checked={liberada}
+                  aria-label={`Acesso à área ${nome}`}
+                  onClick={() => alternarModulo(modulo)}
+                />
+              ) : (
+                <span className="field-hint">Toda a equipe</span>
+              )}
+            </div>
+            {liberada ? (
+              <ul className="permissoes-lista">
+                {acoes.map((acao) => (
+                  <li key={acao}>
+                    <label className={padraoDoPapel(dados.papel, dados.modulos, acao) === efetivas.has(acao) || admin ? "permissao" : "permissao permissao-alterada"}>
+                      <input type="checkbox" checked={efetivas.has(acao)} disabled={admin} onChange={() => alternar(acao)} />
+                      <span>{ACOES[acao].nome}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="field-hint">Sem acesso a esta área.</p>
+            )}
+          </div>
+        );
+      })}
+      {erroModulos ? (
+        <span id="us-modulos-erro" className="field-error" role="alert">
+          {erroModulos}
+        </span>
+      ) : null}
+    </fieldset>
   );
 }

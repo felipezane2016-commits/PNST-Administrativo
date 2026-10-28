@@ -58,7 +58,7 @@ export default function Conciliar() {
   }
 
   const fechamento = fechamentoDo(dados.fechamentos, conta.id, mes);
-  const podeEditar = pode(usuario, "registros.editar") && !fechamento;
+  const podeEditar = pode(usuario, "contas.conciliacao.editar") && !fechamento;
   const autor = usuario?.nome ?? "";
   const inicio = `${mes}-01`;
   const corte = fimDoMes(mes);

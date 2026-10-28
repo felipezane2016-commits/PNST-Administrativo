@@ -37,8 +37,8 @@ type Filtro = "Em andamento" | Etapa;
 export default function Ordens() {
   const { ordens, taxas, configEmails } = useDadosContas();
   const usuario = useUsuarioAtual();
-  const podeEditar = pode(usuario, "registros.editar");
-  const podeExcluir = pode(usuario, "registros.excluir");
+  const podeEditar = pode(usuario, "contas.banco.editar");
+  const podeExcluir = pode(usuario, "contas.banco.excluir");
   const [filtro, setFiltro] = useState<Filtro>("Em andamento");
   const [busca, setBusca] = useState("");
   const [aberta, setAberta] = useState<string | null>(null);

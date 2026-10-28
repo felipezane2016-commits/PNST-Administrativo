@@ -1,3 +1,4 @@
+import { pode } from "@/_core/identidade/permissoes";
 import { useColecao } from "@/_core/armazenamento/colecao";
 import { usuarios, useUsuarioAtual } from "@/_core/identidade/sessao";
 import { formatarData, HOJE } from "@/_core/tempo";
@@ -48,9 +49,11 @@ export default function Pagamentos() {
         titulo="Pagamentos"
         descricao="Pedido → conferência do financeiro → aprovação um nível acima de quem pediu → pagamento com comprovante."
         acoes={
-          <button type="button" className="button-primary" onClick={() => setFormulario({ devolvidoId: null })}>
-            <Plus size={15} strokeWidth={2.2} /> Solicitar pagamento
-          </button>
+          pode(usuario, "pagamentos.pedir") ? (
+            <button type="button" className="button-primary" onClick={() => setFormulario({ devolvidoId: null })}>
+              <Plus size={15} strokeWidth={2.2} /> Solicitar pagamento
+            </button>
+          ) : null
         }
       />
 

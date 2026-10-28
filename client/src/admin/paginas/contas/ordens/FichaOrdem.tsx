@@ -50,7 +50,7 @@ export default function FichaOrdem({ ordem, usuario, aoFechar, aoEditar, aoExclu
   aoEnviarSuperiores: () => void;
 }) {
   const etapa = etapaDaOrdem(ordem);
-  const podeEditar = pode(usuario, "registros.editar");
+  const podeEditar = pode(usuario, "contas.banco.editar");
   const autor = usuario?.nome ?? "";
   const reais = valorEmReais(ordem);
 
@@ -241,7 +241,7 @@ function FormDecisao({ ordem, usuario, autor, nova }: { ordem: Ordem; usuario: U
   const lista = useColecao(usuarios);
   const superiores = lista.filter((pessoa) => pessoa.ativo && (pessoa.papel === "admin" || pessoa.papel === "gestor"));
   const ehSuperior = Boolean(usuario && (usuario.papel === "admin" || usuario.papel === "gestor"));
-  const podeRegistrar = ehSuperior || pode(usuario, "registros.editar");
+  const podeRegistrar = ehSuperior || pode(usuario, "contas.banco.editar");
   const [aberto, setAberto] = useState(!nova);
   const [prazo, setPrazo] = useState<PrazoDecisao>("D+0");
   const [alvo, setAlvo] = useState("");

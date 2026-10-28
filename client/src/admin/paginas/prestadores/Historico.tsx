@@ -114,8 +114,8 @@ function ListaDeRecibos() {
   const { prestadores, recibos } = useDadosPrestadores();
   const usuario = useUsuarioAtual();
   const autor = usuario?.nome ?? "Escritório";
-  const podeEditar = pode(usuario, "registros.editar");
-  const podeExcluir = pode(usuario, "registros.excluir");
+  const podeEditar = pode(usuario, "prestadores.recibos.editar");
+  const podeExcluir = pode(usuario, "prestadores.recibos.excluir");
   const [abertoId, setAbertoId] = useState<string | null>(null);
   const [editando, setEditando] = useState<Receipt | null>(null);
   const [removendo, setRemovendo] = useState<Receipt | null>(null);

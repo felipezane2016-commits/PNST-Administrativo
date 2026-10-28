@@ -2,9 +2,9 @@
 // pessoa definir a própria senha. Roda no Supabase com a chave de serviço,
 // que nunca vai para o navegador.
 //
-//   equipe    → só administrador convida; define papel e módulos.
-//   prestador → quem edita o módulo Prestadores convida; o e-mail precisa ser o
-//               do cadastro do prestador, com o portal ativo.
+//   equipe    → só administrador convida; define papel, áreas e permissões.
+//   prestador → quem tem "Cadastrar, editar e convidar prestadores" convida; o
+//               e-mail precisa ser o do cadastro do prestador, com o portal ativo.
 
 // Sem dependências externas: fala direto com as APIs HTTP do Auth e do banco
 // (nada a baixar na hora de publicar ou de subir a função).
@@ -16,6 +16,14 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+
+/** Mesma regra de public.tem('prestadores.cadastro.editar') no banco. */
+function podeConvidarPrestador(eu: { papel: string; modulos: string[]; permissoes: string[] | null }) {
+  if (!eu.modulos?.includes("prestadores")) return false;
+  if (eu.papel === "admin") return true;
+  if (Array.isArray(eu.permissoes)) return eu.permissoes.includes("prestadores.cadastro.editar");
+  return ["gestor", "operador"].includes(eu.papel);
+}
 
 const responder = (status: number, corpo: Record<string, unknown>) =>
   new Response(JSON.stringify(corpo), { status, headers: { ...CORS, "Content-Type": "application/json" } });
@@ -50,10 +58,12 @@ Deno.serve(async (req) => {
     if (eu.papel !== "admin") return responder(403, { erro: "Só o administrador convida pessoas da equipe." });
     const papel = PAPEIS.includes(corpo.papel) ? corpo.papel : "viewer";
     const modulos = Array.isArray(corpo.modulos) ? corpo.modulos.filter((m: string) => MODULOS.includes(m)) : [];
-    perfil = { nome, departamento: String(corpo.departamento ?? ""), papel, modulos, tipo: "equipe", prestador_id: null };
+    // null = as permissões do papel; lista = personalizadas na ficha.
+    const permissoes = Array.isArray(corpo.permissoes) ? corpo.permissoes.filter((a: unknown) => typeof a === "string" && /^[a-z_.]+$/.test(a)) : null;
+    perfil = { nome, departamento: String(corpo.departamento ?? ""), papel, modulos, permissoes, tipo: "equipe", prestador_id: null };
   } else {
-    if (!["admin", "gestor", "operador"].includes(eu.papel) || !eu.modulos.includes("prestadores"))
-      return responder(403, { erro: "Só quem edita o módulo Prestadores convida para o portal." });
+    if (!podeConvidarPrestador(eu))
+      return responder(403, { erro: "Você não tem permissão para cadastrar e convidar prestadores." });
     const [prestador] = await banco(`prestadores?id=eq.${encodeURIComponent(String(corpo.prestadorId ?? ""))}&select=id,dados`);
     if (!prestador) return responder(404, { erro: "Prestador não encontrado. Salve o cadastro antes de convidar." });
     if (String(prestador.dados?.email ?? "").trim().toLowerCase() !== email)

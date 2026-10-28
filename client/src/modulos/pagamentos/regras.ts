@@ -1,4 +1,4 @@
-import { pode, veModulo, type Papel, type Usuario } from "@/_core/identidade/permissoes";
+import { pode, type Papel, type Usuario } from "@/_core/identidade/permissoes";
 import type { Contrapartida } from "@/modulos/conciliacao/tipos";
 import type { CategoriaPagamento, ConfigAprovacao, Fornecedor, Pagamento, StatusPagamento } from "./tipos";
 
@@ -12,9 +12,9 @@ export type Resposta = { ok: true } | { ok: false; motivo: string };
 const sim: Resposta = { ok: true };
 const nao = (motivo: string): Resposta => ({ ok: false, motivo });
 
-/** Financeiro: edita registros e enxerga o Account Management. */
+/** Financeiro: confere, paga ou vê todos os pedidos (permissões de Pagamentos). */
 export function ehFinanceiro(usuario: Usuario | null) {
-  return Boolean(usuario && pode(usuario, "registros.editar") && veModulo(usuario, "contas"));
+  return pode(usuario, "pagamentos.ver_todos") || pode(usuario, "pagamentos.conferir") || pode(usuario, "pagamentos.pagar");
 }
 
 /** O substituto aprova só dentro do período; fora dele, o titular. */
@@ -26,7 +26,7 @@ export function aprovadorVigente(config: ConfigAprovacao, hoje: string) {
 
 export function podeConferir(usuario: Usuario | null, pagamento: Pagamento): Resposta {
   if (pagamento.status !== "Em conferência") return nao("Só se confere o que está em conferência.");
-  if (!ehFinanceiro(usuario)) return nao("A conferência é do financeiro.");
+  if (!pode(usuario, "pagamentos.conferir")) return nao("Você não tem permissão para conferir pagamentos.");
   if (usuario!.id === pagamento.solicitanteId) return nao("Quem pediu o pagamento não confere o próprio pedido.");
   return sim;
 }
@@ -70,16 +70,16 @@ export function podeAprovar(usuario: Usuario | null, pagamento: Pagamento, confi
   if (usuario.id === pagamento.solicitanteId)
     return nao(`Você pediu este pagamento: a aprovação fica com ${alcada === "chefe" ? "o substituto do chefe da administração (configure em Regras de aprovação)" : ROTULO_ALCADA[alcada]}.`);
   if (usuario.id === pagamento.conferencia?.porId) return nao("Você conferiu este pagamento: a aprovação fica com outra pessoa.");
-  if (usuario.id === aprovadorVigente(config, hoje)) return sim;
   const nivel = NIVEL_DO_PAPEL[usuario.papel];
-  if (alcada === "gestor" && nivel >= 2) return sim;
-  if (alcada === "admin" && nivel >= 3) return sim;
-  return nao(`A aprovação deste pedido é de ${ROTULO_ALCADA[alcada]}.`);
+  const naAlcada = usuario.id === aprovadorVigente(config, hoje) || (alcada === "gestor" && nivel >= 2) || (alcada === "admin" && nivel >= 3);
+  if (!naAlcada) return nao(`A aprovação deste pedido é de ${ROTULO_ALCADA[alcada]}.`);
+  if (!pode(usuario, "pagamentos.aprovar")) return nao("Você não tem permissão para aprovar pagamentos.");
+  return sim;
 }
 
 export function podePagar(usuario: Usuario | null, pagamento: Pagamento): Resposta {
   if (pagamento.status !== "Aprovado") return nao("Só se paga o que foi aprovado.");
-  if (!ehFinanceiro(usuario)) return nao("O pagamento é registrado pelo financeiro.");
+  if (!pode(usuario, "pagamentos.pagar")) return nao("Você não tem permissão para registrar pagamentos.");
   if (usuario!.id === pagamento.aprovacao?.porId) return nao("Quem aprovou não executa o pagamento.");
   return sim;
 }
@@ -100,7 +100,7 @@ export function podeCancelar(usuario: Usuario | null, pagamento: Pagamento) {
  */
 export function visiveisPara(usuario: Usuario | null, pagamentos: Pagamento[], config: ConfigAprovacao, hoje: string, pessoas: Usuario[]) {
   if (!usuario) return [];
-  if (ehFinanceiro(usuario) || usuario.id === aprovadorVigente(config, hoje) || usuario.id === config.aprovadorId) return pagamentos;
+  if (pode(usuario, "pagamentos.ver_todos") || usuario.id === aprovadorVigente(config, hoje) || usuario.id === config.aprovadorId) return pagamentos;
   return pagamentos.filter(
     (pagamento) =>
       pagamento.solicitanteId === usuario.id ||
