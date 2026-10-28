@@ -5,11 +5,11 @@ import { sessaoAdmin, useUsuarioAtual, usuarios } from "@/_core/identidade/sessa
 import { formatarDataHora, gerarId } from "@/_core/tempo";
 import Cabecalho from "@/admin/componentes/Cabecalho";
 import Campo from "@/admin/componentes/Campo";
-import Painel from "@/admin/componentes/Painel";
+import { usarModal } from "@/admin/componentes/usarModal";
 import Selo from "@/admin/componentes/Selo";
 import { MODO_REAL } from "@/_core/supabase/modo";
-import { Eraser, Plus, RotateCcw, Search } from "lucide-react";
-import { useState } from "react";
+import { ChevronRight, Eraser, Mail, Plus, RotateCcw, Search, UserRound, X } from "lucide-react";
+import { useState, type FormEvent } from "react";
 
 const DEPARTAMENTOS = ["Jurídico", "Operações", "Financeiro", "TI", "RH", "Administrativo"];
 
@@ -141,6 +141,8 @@ function FormularioUsuario({ usuario, todos, euId, aoFechar }: { usuario: Usuari
   const [enviando, setEnviando] = useState(false);
   const [erroConvite, setErroConvite] = useState<string | null>(null);
   const souEu = usuario?.id === euId;
+  const raiz = usarModal(aoFechar);
+  const convite = MODO_REAL && !usuario;
 
   function alternarModulo(modulo: Modulo) {
     setDados((atual) => ({
@@ -150,7 +152,8 @@ function FormularioUsuario({ usuario, todos, euId, aoFechar }: { usuario: Usuari
     setErros((atual) => ({ ...atual, modulos: undefined }));
   }
 
-  async function salvar() {
+  async function salvar(evento?: FormEvent) {
+    evento?.preventDefault();
     const encontrados: Erros = {};
     if (!dados.nome.trim()) encontrados.nome = "Informe o nome.";
     if (!/^\S+@\S+\.\S+$/.test(dados.email)) encontrados.email = "E-mail inválido.";
@@ -166,7 +169,7 @@ function FormularioUsuario({ usuario, todos, euId, aoFechar }: { usuario: Usuari
       setErros(encontrados);
       return;
     }
-    if (MODO_REAL && !usuario) {
+    if (convite) {
       setEnviando(true);
       const { convidar } = await import("@/_core/supabase/autenticacao");
       const erro = await convidar({ tipo: "equipe", email: dados.email.trim(), nome: dados.nome.trim(), departamento: dados.departamento, papel: dados.papel, modulos: dados.modulos, permissoes: dados.permissoes ?? null });
@@ -179,66 +182,129 @@ function FormularioUsuario({ usuario, todos, euId, aoFechar }: { usuario: Usuari
     aoFechar();
   }
 
+  const areasLiberadas = (Object.keys(AREAS) as Area[]).filter((area) => !AREAS[area].modulo || dados.modulos.includes(AREAS[area].modulo!));
+  const total = permissoesEfetivas(dados).filter((acao) => areasLiberadas.includes(ACOES[acao].area)).length;
+
   return (
-    <Painel
-      rotulo="Usuários e acessos"
-      titulo={usuario ? usuario.nome : MODO_REAL ? "Convidar usuário" : "Novo usuário"}
-      descricao={MODO_REAL && !usuario ? "A pessoa recebe um e-mail com o link para criar a própria senha." : undefined}
-      aoFechar={aoFechar}
-      aoEnviar={salvar}
-      textoEnviar={MODO_REAL && !usuario ? (enviando ? "Enviando…" : "Enviar convite") : undefined}
-    >
-      {erroConvite ? (
-        <div className="acesso-alerta-erro espaco-abaixo" role="alert">
-          <span>{erroConvite}</span>
-        </div>
-      ) : null}
-      <div className="field-grid">
-        <Campo id="us-nome" rotulo="Nome completo" erro={erros.nome}>
-          {(aria) => <input {...aria} className="field-input" value={dados.nome} onChange={(e) => setDados({ ...dados, nome: e.target.value })} />}
-        </Campo>
-        <Campo id="us-email" rotulo="E-mail" erro={erros.email} dica={MODO_REAL && usuario ? "O e-mail é o login: não muda por aqui." : undefined}>
-          {(aria) => <input {...aria} className="field-input" type="email" value={dados.email} disabled={MODO_REAL && Boolean(usuario)} onChange={(e) => setDados({ ...dados, email: e.target.value })} />}
-        </Campo>
+    <div className="modal-backdrop" onMouseDown={(evento) => evento.target === evento.currentTarget && aoFechar()}>
+      <div ref={raiz} className="modal-panel ficha-usuario" role="dialog" aria-modal="true" aria-labelledby="ficha-usuario-titulo">
+        <header className="ficha-usuario-topo">
+          <span className="avatar avatar-grande" aria-hidden="true">
+            {dados.nome.trim() ? iniciais(dados.nome) : <UserRound size={20} strokeWidth={1.8} />}
+          </span>
+          <div className="ficha-usuario-identidade">
+            <span className="eyebrow">{usuario ? "Usuários e acessos" : convite ? "Convidar usuário" : "Novo usuário"}</span>
+            <h2 id="ficha-usuario-titulo">{dados.nome.trim() || (convite ? "Convidar para a equipe" : "Novo usuário")}</h2>
+            <span className="ficha-usuario-meta">
+              {dados.email || "sem e-mail"} · <Selo tom={dados.papel === "admin" ? "amber" : "neutral"}>{PAPEIS[dados.papel].nome}</Selo>{" "}
+              {dados.ativo ? <Selo tom="green">Ativo</Selo> : <Selo tom="neutral">Inativo</Selo>}
+            </span>
+          </div>
+          <button type="button" className="icon-button" aria-label="Fechar" data-fechar onClick={aoFechar}>
+            <X size={17} strokeWidth={2} />
+          </button>
+        </header>
+
+        <form className="ficha-usuario-corpo" onSubmit={(evento) => void salvar(evento)} noValidate>
+          {erroConvite ? (
+            <div className="acesso-alerta-erro ficha-usuario-cheio" role="alert">
+              <span>{erroConvite}</span>
+            </div>
+          ) : null}
+          {convite ? (
+            <p className="acesso-alerta-info ficha-usuario-cheio">
+              <Mail size={15} strokeWidth={2} />
+              <span>A pessoa recebe um e-mail com o link para criar a própria senha.</span>
+            </p>
+          ) : null}
+
+          <div className="ficha-usuario-coluna">
+            <section className="ficha-secao">
+              <h3>Dados da pessoa</h3>
+              <Campo id="us-nome" rotulo="Nome completo" erro={erros.nome}>
+                {(aria) => <input {...aria} className="field-input" value={dados.nome} onChange={(e) => setDados({ ...dados, nome: e.target.value })} />}
+              </Campo>
+              <Campo id="us-email" rotulo="E-mail" erro={erros.email} dica={MODO_REAL && usuario ? "O e-mail é o login e não muda por aqui." : undefined}>
+                {(aria) => (
+                  <input {...aria} className="field-input" type="email" value={dados.email} disabled={MODO_REAL && Boolean(usuario)} onChange={(e) => setDados({ ...dados, email: e.target.value })} />
+                )}
+              </Campo>
+              <Campo id="us-departamento" rotulo="Departamento">
+                {(aria) => (
+                  <select {...aria} className="field-input" value={dados.departamento} onChange={(e) => setDados({ ...dados, departamento: e.target.value })}>
+                    {DEPARTAMENTOS.map((departamento) => (
+                      <option key={departamento}>{departamento}</option>
+                    ))}
+                  </select>
+                )}
+              </Campo>
+              {MODO_REAL ? null : (
+                <Campo id="us-senha" rotulo="Senha" erro={erros.senha} dica={usuario ? "Em branco mantém a atual." : "Mínimo de 6 caracteres."}>
+                  {(aria) => <input {...aria} className="field-input" type="password" value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} autoComplete="new-password" />}
+                </Campo>
+              )}
+            </section>
+
+            <section className="ficha-secao">
+              <h3>Situação</h3>
+              <div className="toggle-row">
+                <div>
+                  <strong className="field-label" id="us-ativo-rotulo">
+                    Usuário ativo
+                  </strong>
+                  <p className="field-hint">Inativo perde o acesso na hora, mesmo com a sessão aberta.</p>
+                </div>
+                <button type="button" className="switch" role="switch" aria-checked={dados.ativo} aria-labelledby="us-ativo-rotulo" onClick={() => setDados({ ...dados, ativo: !dados.ativo })} />
+              </div>
+              {usuario?.ultimoAcesso ? <p className="field-hint">Último acesso em {formatarDataHora(usuario.ultimoAcesso)}.</p> : null}
+            </section>
+          </div>
+
+          <div className="ficha-usuario-coluna">
+            <section className="ficha-secao">
+              <h3>Papel</h3>
+              <div className="papel-opcoes" role="radiogroup" aria-label="Papel">
+                {(Object.keys(PAPEIS) as Papel[]).map((papel) => (
+                  <label key={papel} className={dados.papel === papel ? "papel-opcao papel-opcao-ativa" : "papel-opcao"}>
+                    <input
+                      type="radio"
+                      name="us-papel"
+                      value={papel}
+                      checked={dados.papel === papel}
+                      onChange={() => {
+                        setDados({ ...dados, papel });
+                        setErros((atual) => ({ ...atual, papel: undefined }));
+                      }}
+                    />
+                    <strong>{PAPEIS[papel].nome}</strong>
+                    <span>{PAPEIS[papel].descricao}</span>
+                  </label>
+                ))}
+              </div>
+              {erros.papel ? (
+                <span className="field-error" role="alert">
+                  {erros.papel}
+                </span>
+              ) : null}
+            </section>
+
+            <Permissoes dados={dados} erroModulos={erros.modulos} alternarModulo={alternarModulo} mudar={(permissoes) => setDados((atual) => ({ ...atual, permissoes }))} />
+          </div>
+
+          <footer className="ficha-usuario-rodape">
+            <span className="field-hint">
+              {dados.papel === "admin" ? "Tudo liberado" : `${total} permissões`} em {areasLiberadas.length} área(s){dados.modulos.includes("visao") ? " + Visão geral" : ""}
+            </span>
+            <button type="button" className="button-secondary" onClick={aoFechar}>
+              Cancelar
+            </button>
+            <button type="submit" className="button-primary" disabled={enviando}>
+              {convite ? (enviando ? "Enviando…" : "Enviar convite") : usuario ? "Salvar alterações" : "Criar usuário"}
+            </button>
+          </footer>
+        </form>
       </div>
-      <div className="field-grid">
-        {MODO_REAL ? null : (
-          <Campo id="us-senha" rotulo="Senha" erro={erros.senha} dica={usuario ? "Em branco mantém a atual" : "Mínimo de 6 caracteres"}>
-            {(aria) => <input {...aria} className="field-input" type="password" value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} autoComplete="new-password" />}
-          </Campo>
-        )}
-        <Campo id="us-departamento" rotulo="Departamento">
-          {(aria) => (
-            <select {...aria} className="field-input" value={dados.departamento} onChange={(e) => setDados({ ...dados, departamento: e.target.value })}>
-              {DEPARTAMENTOS.map((departamento) => (
-                <option key={departamento}>{departamento}</option>
-              ))}
-            </select>
-          )}
-        </Campo>
-      </div>
-      <Campo id="us-papel" rotulo="Papel" erro={erros.papel} dica={PAPEIS[dados.papel].descricao}>
-        {(aria) => (
-          <select {...aria} className="field-input" value={dados.papel} onChange={(e) => setDados({ ...dados, papel: e.target.value as Papel })}>
-            {(Object.keys(PAPEIS) as Papel[]).map((papel) => (
-              <option key={papel} value={papel}>
-                {PAPEIS[papel].nome}
-              </option>
-            ))}
-          </select>
-        )}
-      </Campo>
-      <Permissoes dados={dados} erroModulos={erros.modulos} alternarModulo={alternarModulo} mudar={(permissoes) => setDados((atual) => ({ ...atual, permissoes }))} />
-      <div className="toggle-row">
-        <div>
-          <strong className="field-label" id="us-ativo-rotulo">
-            Usuário ativo
-          </strong>
-          <p className="field-hint">Inativo perde o acesso na hora, mesmo com sessão aberta.</p>
-        </div>
-        <button type="button" className="switch" role="switch" aria-checked={dados.ativo} aria-labelledby="us-ativo-rotulo" onClick={() => setDados({ ...dados, ativo: !dados.ativo })} />
-      </div>
-    </Painel>
+    </div>
   );
 }
 
@@ -261,6 +327,7 @@ function Permissoes({
   const admin = dados.papel === "admin";
   const efetivas = new Set(permissoesEfetivas(dados));
   const personalizadas = Boolean(dados.permissoes) && !admin;
+  const [aberta, setAberta] = useState<Area | null>("prestadores");
 
   function alternar(acao: Acao) {
     const atuais = new Set(permissoesEfetivas(dados));
@@ -276,79 +343,86 @@ function Permissoes({
   }
 
   return (
-    <fieldset className="field-group field-group-fieldset permissoes" aria-describedby={erroModulos ? "us-modulos-erro" : undefined}>
-      <legend className="field-label rotulo-acima">Áreas e permissões</legend>
+    <section className="ficha-secao" aria-describedby={erroModulos ? "us-modulos-erro" : undefined}>
+      <div className="ficha-secao-topo">
+        <h3>Áreas e permissões</h3>
+        {admin ? (
+          <Selo tom="amber">Tudo liberado</Selo>
+        ) : personalizadas ? (
+          <span className="inline-row">
+            <Selo tom="blue">Personalizadas</Selo>
+            <button type="button" className="text-button" onClick={() => mudar(null)}>
+              <RotateCcw size={13} strokeWidth={2} /> Padrão do papel
+            </button>
+          </span>
+        ) : (
+          <Selo tom="neutral">Padrão do papel</Selo>
+        )}
+      </div>
       <p className="field-hint">
         {admin
-          ? "Administrador tem todas as permissões das áreas liberadas, e gerencia usuários."
-          : personalizadas
-            ? "Permissões personalizadas para esta pessoa."
-            : `Usando as permissões padrão do papel ${PAPEIS[dados.papel].nome}. Marque ou desmarque para personalizar.`}
-        {personalizadas ? (
-          <>
-            {" "}
-            <button type="button" className="text-button" onClick={() => mudar(null)}>
-              Voltar ao padrão do papel
-            </button>
-          </>
-        ) : null}
+          ? "Administrador faz tudo nas áreas ligadas abaixo e gerencia usuários. Desligue uma área para tirar o acesso."
+          : "Ligue as áreas que a pessoa usa e marque o que ela pode fazer em cada uma. Itens em laranja diferem do padrão do papel."}
       </p>
 
-      <div className="permissoes-area">
-        <div className="permissoes-area-topo">
+      <div className="area-linha area-linha-simples">
+        <span className="area-linha-nome">
           <strong>{MODULOS.visao}</strong>
-          <button
-            type="button"
-            className="switch"
-            role="switch"
-            aria-checked={dados.modulos.includes("visao")}
-            aria-label={`Acesso à ${MODULOS.visao}`}
-            onClick={() => alternarModulo("visao")}
-          />
-        </div>
+          <span>Painel inicial do escritório</span>
+        </span>
+        <button type="button" className="switch" role="switch" aria-checked={dados.modulos.includes("visao")} aria-label={`Acesso à ${MODULOS.visao}`} onClick={() => alternarModulo("visao")} />
       </div>
 
       {(Object.keys(AREAS) as Area[]).map((area) => {
         const { nome, modulo } = AREAS[area];
         const liberada = !modulo || dados.modulos.includes(modulo);
         const acoes = acoesDaArea(area);
-        const todas = acoes.every((acao) => efetivas.has(acao));
+        const marcadas = acoes.filter((acao) => efetivas.has(acao)).length;
+        const expandida = aberta === area && liberada && !admin;
         return (
-          <div className={liberada ? "permissoes-area" : "permissoes-area permissoes-area-fechada"} key={area}>
-            <div className="permissoes-area-topo">
-              <strong>{nome}</strong>
-              {liberada && !admin ? (
-                <button type="button" className="text-button" onClick={() => marcarArea(area, !todas)}>
-                  {todas ? "Desmarcar todas" : "Marcar todas"}
-                </button>
-              ) : null}
+          <div className={liberada ? "area-linha" : "area-linha area-linha-fechada"} key={area}>
+            <div className="area-linha-topo">
+              <button
+                type="button"
+                className="area-linha-abrir"
+                aria-expanded={expandida}
+                disabled={!liberada || admin}
+                onClick={() => setAberta(expandida ? null : area)}
+              >
+                {liberada && !admin ? <ChevronRight size={15} strokeWidth={2} className={expandida ? "girar-90" : undefined} aria-hidden="true" /> : null}
+                <span className="area-linha-nome">
+                  <strong>{nome}</strong>
+                  <span>{!liberada ? "Sem acesso" : admin ? "Tudo liberado" : `${marcadas} de ${acoes.length} permissões`}</span>
+                </span>
+              </button>
               {modulo ? (
-                <button
-                  type="button"
-                  className="switch"
-                  role="switch"
-                  aria-checked={liberada}
-                  aria-label={`Acesso à área ${nome}`}
-                  onClick={() => alternarModulo(modulo)}
-                />
+                <button type="button" className="switch" role="switch" aria-checked={liberada} aria-label={`Acesso à área ${nome}`} onClick={() => alternarModulo(modulo)} />
               ) : (
                 <span className="field-hint">Toda a equipe</span>
               )}
             </div>
-            {liberada ? (
-              <ul className="permissoes-lista">
-                {acoes.map((acao) => (
-                  <li key={acao}>
-                    <label className={padraoDoPapel(dados.papel, dados.modulos, acao) === efetivas.has(acao) || admin ? "permissao" : "permissao permissao-alterada"}>
-                      <input type="checkbox" checked={efetivas.has(acao)} disabled={admin} onChange={() => alternar(acao)} />
-                      <span>{ACOES[acao].nome}</span>
-                    </label>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="field-hint">Sem acesso a esta área.</p>
-            )}
+            {expandida ? (
+              <div className="area-linha-corpo">
+                <div className="area-linha-atalhos">
+                  <button type="button" className="text-button" onClick={() => marcarArea(area, true)}>
+                    Marcar todas
+                  </button>
+                  <button type="button" className="text-button text-button-neutro" onClick={() => marcarArea(area, false)}>
+                    Desmarcar todas
+                  </button>
+                </div>
+                <ul className="permissoes-lista">
+                  {acoes.map((acao) => (
+                    <li key={acao}>
+                      <label className={padraoDoPapel(dados.papel, dados.modulos, acao) === efetivas.has(acao) ? "permissao" : "permissao permissao-alterada"}>
+                        <input type="checkbox" checked={efetivas.has(acao)} onChange={() => alternar(acao)} />
+                        <span>{ACOES[acao].nome}</span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </div>
         );
       })}
@@ -357,6 +431,6 @@ function Permissoes({
           {erroModulos}
         </span>
       ) : null}
-    </fieldset>
+    </section>
   );
 }
