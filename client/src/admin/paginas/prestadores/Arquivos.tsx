@@ -1,39 +1,69 @@
 import { formatarData } from "@/_core/tempo";
 import Cabecalho from "@/admin/componentes/Cabecalho";
 import Vazio from "@/admin/componentes/Vazio";
-import { anexosDoRecibo, documentosDoFechamento, formatMonthTitle, type ArquivoAnexo } from "@/lib/portal";
+import { anexosDoRecibo, documentosDoFechamento, formatMonthTitle, nomeDoUnificado, type ArquivoAnexo, type Receipt } from "@/lib/portal";
+import { abrirNota } from "@/lib/reciboPdf";
+import { recibosDoLote } from "@/modulos/prestadores/regras";
 import { CATEGORIAS_PRESTADOR, type CategoriaPrestador, type Prestador } from "@/modulos/prestadores/tipos";
 import { useDadosPrestadores } from "@/modulos/prestadores/usarDados";
-import { ChevronRight, Folder, FolderOpen } from "lucide-react";
+import { ChevronRight, Folder, FolderOpen, Paperclip } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSearch } from "wouter";
 import { BotaoAnexo } from "./ReciboDetalhe";
 
-type Tipo = "Documento do recibo" | "NF / fatura / boleto" | "Documento único" | "Relatório mensal";
-type Arquivo = ArquivoAnexo & { tipo: Tipo; referencia: string; data: string; prestadorId: string; competencia: string };
+type Tipo = "Recibo + nota" | "Documento do prestador" | "NF / fatura / boleto" | "Relatório mensal";
+type Arquivo = ArquivoAnexo & {
+  tipo: Tipo;
+  referencia: string;
+  data: string;
+  prestadorId: string;
+  competencia: string;
+  /** Recibo + nota ainda não guardado (lote anterior a esta versão): é gerado ao abrir. */
+  gerarDe?: Receipt;
+};
 type Caminho = { categoria?: CategoriaPrestador; prestadorId?: string; competencia?: string };
 
-/** Todos os arquivos dos prestadores, cada um com o dono e o mês. */
+const ORDEM: Record<Tipo, number> = { "Recibo + nota": 0, "NF / fatura / boleto": 1, "Documento do prestador": 2, "Relatório mensal": 3 };
+
+/**
+ * O que fica na pasta do mês de cada prestador: o recibo + nota unificado de
+ * cada recibo enviado (nomeado com cliente/caso, data e valor), a NF e os
+ * documentos que o prestador anexou, e o relatório mensal (o mais recente).
+ */
 function juntarArquivos({ recibos, fechamentos, registros }: ReturnType<typeof useDadosPrestadores>): Arquivo[] {
   const arquivos: Arquivo[] = [];
-  for (const recibo of recibos) {
-    if (recibo.status === "Rascunho") continue;
-    for (const anexo of anexosDoRecibo(recibo))
-      arquivos.push({ ...anexo, tipo: "Documento do recibo", referencia: `${recibo.id} · ${recibo.client}`, data: recibo.serviceDate, prestadorId: recibo.prestadorId, competencia: recibo.competencia });
-  }
   for (const fechamento of fechamentos) {
     if (!fechamento.submitted) continue;
     const base = { prestadorId: fechamento.prestadorId, competencia: fechamento.competencia };
-    const data = (fechamento.submittedAt ?? `${fechamento.competencia}-01`).slice(0, 10);
-    for (const documento of documentosDoFechamento(fechamento)) arquivos.push({ ...documento, ...base, tipo: "NF / fatura / boleto", referencia: "Fechamento do mês", data });
-    if (fechamento.documentoUnico)
-      arquivos.push({ ...fechamento.documentoUnico, ...base, tipo: "Documento único", referencia: "Recibos + documentos + NF", data: (fechamento.conferidoEm ?? data).slice(0, 10) });
+    const enviadoEm = (fechamento.submittedAt ?? `${fechamento.competencia}-01`).slice(0, 10);
+    for (const recibo of recibosDoLote(recibos, fechamento)) {
+      const guardado = fechamento.unificados?.find((item) => item.reciboId === recibo.id);
+      const nome = `${nomeDoUnificado(recibo)}.pdf`;
+      arquivos.push(
+        guardado
+          ? { ...guardado, ...base, nome, tipo: "Recibo + nota", referencia: recibo.id, data: recibo.serviceDate }
+          : { id: null, nome, ...base, tipo: "Recibo + nota", referencia: recibo.id, data: recibo.serviceDate, gerarDe: recibo },
+      );
+      for (const anexo of anexosDoRecibo(recibo))
+        arquivos.push({ ...anexo, ...base, tipo: "Documento do prestador", referencia: `${recibo.id} · ${recibo.client}`, data: recibo.serviceDate });
+    }
+    for (const documento of documentosDoFechamento(fechamento))
+      arquivos.push({ ...documento, ...base, tipo: "NF / fatura / boleto", referencia: "Fechamento do mês", data: enviadoEm });
   }
-  for (const registro of registros) {
-    if (registro.tipo !== "arquivo" || !registro.arquivo || /único/i.test(registro.acao)) continue;
-    arquivos.push({ ...registro.arquivo, tipo: "Relatório mensal", referencia: registro.usuario, data: registro.dataHora.slice(0, 10), prestadorId: registro.prestadorId, competencia: registro.arquivo.competencia });
+  // Relatório mensal: só o mais recente de cada prestador no mês.
+  const relatorios = new Map<string, Arquivo>();
+  for (const registro of [...registros].sort((a, b) => a.dataHora.localeCompare(b.dataHora))) {
+    if (registro.tipo !== "arquivo" || !registro.arquivo || !/relatório/i.test(registro.acao)) continue;
+    relatorios.set(`${registro.prestadorId}|${registro.arquivo.competencia}`, {
+      ...registro.arquivo,
+      tipo: "Relatório mensal",
+      referencia: `Gerado por ${registro.usuario}`,
+      data: registro.dataHora.slice(0, 10),
+      prestadorId: registro.prestadorId,
+      competencia: registro.arquivo.competencia,
+    });
   }
-  return arquivos;
+  return [...arquivos, ...Array.from(relatorios.values())];
 }
 
 /**
@@ -64,7 +94,7 @@ export default function Arquivos() {
 
   const naCategoria = conhecidos.filter((arquivo) => categoriaDe(arquivo) === caminho.categoria);
   const doPrestador = naCategoria.filter((arquivo) => arquivo.prestadorId === caminho.prestadorId);
-  const doMes = doPrestador.filter((arquivo) => arquivo.competencia === caminho.competencia).sort((a, b) => a.tipo.localeCompare(b.tipo) || a.data.localeCompare(b.data));
+  const doMes = doPrestador.filter((arquivo) => arquivo.competencia === caminho.competencia).sort((a, b) => ORDEM[a.tipo] - ORDEM[b.tipo] || a.data.localeCompare(b.data) || a.nome.localeCompare(b.nome));
   const prestador = caminho.prestadorId ? prestadorDe.get(caminho.prestadorId) : undefined;
 
   const trilha: { rotulo: string; ir: Caminho }[] = [{ rotulo: "Arquivos", ir: {} }];
@@ -77,7 +107,7 @@ export default function Arquivos() {
       <Cabecalho
         rotulo="Prestadores de serviço"
         titulo="Arquivos"
-        descricao="Uma pasta por categoria, dentro dela uma por prestador e, em cada prestador, uma por mês com os documentos dos recibos, a NF do fechamento, o documento único e os relatórios."
+        descricao="Uma pasta por categoria, dentro dela uma por prestador e, em cada prestador, uma por mês com o recibo + nota de cada serviço, a NF e os documentos do prestador e o relatório mensal."
       />
       <section className="operations-surface">
         <nav className="pasta-trilha" aria-label="Caminho da pasta">
@@ -135,12 +165,24 @@ export default function Arquivos() {
             {doMes.map((arquivo, indice) => (
               <div className="ged-line" key={`${arquivo.id ?? arquivo.nome}-${indice}`}>
                 <div className="ged-line-copy">
-                  <BotaoAnexo id={arquivo.id} nome={arquivo.nome} rotulo={arquivo.nome} />
+                  {arquivo.gerarDe ? (
+                    <button
+                      type="button"
+                      className="documento-botao"
+                      aria-label={`Abrir ${arquivo.nome}`}
+                      title="Abrir em PDF"
+                      onClick={() => void abrirNota(arquivo.gerarDe!, prestadorDe.get(arquivo.prestadorId)?.nome ?? "Prestador", "pt", true)}
+                    >
+                      <Paperclip size={13} strokeWidth={2} /> {arquivo.nome}
+                    </button>
+                  ) : (
+                    <BotaoAnexo id={arquivo.id} nome={arquivo.nome} rotulo={arquivo.nome} />
+                  )}
                   <span>{arquivo.referencia}</span>
                 </div>
                 <div className="ged-line-meta">
                   <span className="field-hint">{formatarData(arquivo.data)}</span>
-                  <span className={arquivo.tipo === "Documento do recibo" ? "status-pill status-neutral" : "status-pill status-blue"}>{arquivo.tipo}</span>
+                  <span className={arquivo.tipo === "Recibo + nota" ? "status-pill status-amber" : arquivo.tipo === "Relatório mensal" ? "status-pill status-blue" : "status-pill status-neutral"}>{arquivo.tipo}</span>
                 </div>
               </div>
             ))}

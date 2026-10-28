@@ -150,7 +150,12 @@ export function excluirLote(prestadorId: string, competencia: string, autor: str
   const ids = new Set(doLote.map((recibo) => recibo.id));
   recibos.atualizar((lista) => lista.filter((recibo) => !ids.has(recibo.id)));
   fechamentos.atualizar((lista) => lista.filter((item) => !chaveDe(prestadorId, competencia)(item)));
-  const arquivos = [...doLote.flatMap(anexosDoRecibo), ...documentosDoFechamento(fechamento), ...(fechamento.documentoUnico ? [fechamento.documentoUnico] : [])];
+  const arquivos = [
+    ...doLote.flatMap(anexosDoRecibo),
+    ...documentosDoFechamento(fechamento),
+    ...(fechamento.documentoUnico ? [fechamento.documentoUnico] : []),
+    ...(fechamento.unificados ?? []),
+  ];
   arquivos.forEach((arquivo) => arquivo.id && void apagarAnexo(arquivo.id));
   registrar(prestadorId, "exclusao", "Lote excluído", autor, `Competência: ${formatMonthTitle(competencia)} · ${nomeDoPrestador(prestadorId)}`);
 }
@@ -161,6 +166,14 @@ export function guardarDocumentoUnico(prestadorId: string, competencia: string, 
   mudarLote(prestadorId, competencia, { documentoUnico: arquivo });
   if (anterior?.id && anterior.id !== arquivo.id) void apagarAnexo(anterior.id);
   registrar(prestadorId, "arquivo", "Documento único gerado", autor, arquivo.nome, null, { ...arquivo, competencia });
+}
+
+/** Guarda os recibos + notas unificados do lote (um por recibo) na pasta do mês. */
+export function guardarUnificados(prestadorId: string, competencia: string, unificados: NonNullable<Closing["unificados"]>, autor: string) {
+  const anteriores = fechamentoDe(prestadorId, competencia)?.unificados ?? [];
+  mudarLote(prestadorId, competencia, { unificados });
+  apagarArquivosRemovidos(anteriores, unificados);
+  registrar(prestadorId, "arquivo", "Recibos e notas unificados salvos na pasta", autor, `${unificados.length} recibo(s) · ${formatMonthTitle(competencia)}`);
 }
 
 export function salvarPrestador(dados: Prestador) {

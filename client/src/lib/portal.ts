@@ -112,6 +112,8 @@ export type Closing = {
   obs?: string | null;
   /** Documento único gerado ao finalizar a conferência (recibos + comprovantes + NF). */
   documentoUnico?: ArquivoAnexo | null;
+  /** Recibo + nota unificado de cada recibo, guardado na pasta do mês ao finalizar a conferência. */
+  unificados?: (ArquivoAnexo & { reciboId: string })[];
   conferidoEm?: string | null;
   /** Dia em que o escritório pagou o lote; alimenta o razão da conciliação. */
   paidAt?: string | null;
@@ -222,6 +224,13 @@ export function documentosDoFechamento(closing: Closing | null | undefined): Arq
   if (!closing) return [];
   if (closing.documentos) return closing.documentos;
   return closing.documentName ? [{ id: closing.documentId ?? null, nome: closing.documentName }] : [];
+}
+
+/** Nome do recibo + nota unificado: cliente/caso, data do serviço e valor. */
+export function nomeDoUnificado(receipt: Receipt) {
+  const cliente = [receipt.client, receipt.caseRef].filter((parte) => parte?.trim()).join(" — ") || receipt.id;
+  // Data com hífens: o nome vira nome de arquivo, e "/" não pode.
+  return `${cliente} — ${formatDate(receipt.serviceDate).replace(/\//g, "-")} — ${formatBRL(receipt.amount)}`;
 }
 
 /** Recusados e arquivados não entram no fechamento nem na soma. */

@@ -9,8 +9,8 @@ import Painel from "@/admin/componentes/Painel";
 import Selo, { type Tom } from "@/admin/componentes/Selo";
 import Vazio from "@/admin/componentes/Vazio";
 import ReceiptModal from "@/components/ReceiptModal";
-import { documentosDoFechamento, formatBRL, formatMonthTitle, ROTULO_LOTE, type Receipt } from "@/lib/portal";
-import { gerarPdfLote } from "@/lib/reciboPdf";
+import { documentosDoFechamento, formatBRL, nomeDoUnificado, formatMonthTitle, ROTULO_LOTE, type Receipt } from "@/lib/portal";
+import { gerarNota, gerarPdfLote } from "@/lib/reciboPdf";
 import { solicitarDoLote } from "@/modulos/pagamentos/acoes";
 import { pagamentos } from "@/modulos/pagamentos/colecoes";
 import {
@@ -19,6 +19,7 @@ import {
   excluirRecibo,
   finalizarConferencia,
   guardarDocumentoUnico,
+  guardarUnificados,
   marcarPago,
   rejeitarLote,
   solicitarAjusteLote,
@@ -77,7 +78,16 @@ export default function Conferencia() {
       const nome = `${lote.prestador.nome.replace(/\s+/g, "-")}_${lote.competencia}_completo.pdf`;
       const anexo = await guardarAnexo(new File([blob], nome, { type: "application/pdf" }), pastaDoPrestador(lote.prestador.id, lote.competencia));
       guardarDocumentoUnico(lote.prestador.id, lote.competencia, { id: anexo.id, nome, tipo: "application/pdf", tamanho: blob.size }, autor);
-      setAviso(`Documento único gerado — ${lote.prestador.nome} · ${formatMonthTitle(lote.competencia)}.`);
+      // Como na referência: o recibo de cada serviço vai para a pasta do prestador (aqui, recibo + nota unificado).
+      const unificados = [];
+      for (const recibo of aprovados) {
+        const pdf = await gerarNota(recibo, lote.prestador.nome, "pt", true);
+        const titulo = nomeDoUnificado(recibo);
+        const guardado = await guardarAnexo(new File([pdf], `${titulo}.pdf`, { type: "application/pdf" }), pastaDoPrestador(lote.prestador.id, lote.competencia));
+        unificados.push({ id: guardado.id, nome: `${titulo}.pdf`, tipo: "application/pdf", tamanho: pdf.size, reciboId: recibo.id });
+      }
+      guardarUnificados(lote.prestador.id, lote.competencia, unificados, autor);
+      setAviso(`Documentos gerados na pasta — ${lote.prestador.nome} · ${formatMonthTitle(lote.competencia)}.`);
       setTimeout(() => navegar(pastaDoLote(lote)), 1500);
     } catch {
       setAviso("Conferência finalizada, mas não foi possível gerar o documento único. Gere de novo pelo botão do lote.");
