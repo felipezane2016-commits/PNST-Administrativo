@@ -13,6 +13,7 @@ import Closing from "./pages/Closing";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import Receipts from "./pages/Receipts";
+import Services from "./pages/Services";
 
 /**
  * Zonas da plataforma, no modelo do documento de arquitetura:
@@ -41,6 +42,11 @@ function RotasPortal() {
       <Route path="/recibos">
         <RotaPrivadaPortal>
           <Receipts />
+        </RotaPrivadaPortal>
+      </Route>
+      <Route path="/servicos">
+        <RotaPrivadaPortal>
+          <Services />
         </RotaPrivadaPortal>
       </Route>
       <Route path="/fechamento">

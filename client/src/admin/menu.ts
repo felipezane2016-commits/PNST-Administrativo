@@ -18,6 +18,7 @@ import {
   ListChecks,
   PiggyBank,
   Scale,
+  Send,
   Settings2,
   ShieldCheck,
   Truck,
@@ -26,7 +27,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-export type Contador = "notificacoes" | "conferencia" | "ordens" | "pagamentos" | "aprovacoes" | "contas";
+export type Contador = "notificacoes" | "servicos" | "conferencia" | "ordens" | "pagamentos" | "aprovacoes" | "contas";
 
 export type ItemMenu = {
   rota: string;
@@ -84,6 +85,7 @@ export const MENUS_MODULO: MenuModulo[] = [
         rotulo: "Principal",
         itens: [
           { rota: "/prestadores", rotulo: "Painel", icone: Gauge, exige: "prestadores.painel.ver" },
+          { rota: "/prestadores/servicos", rotulo: "Serviços", icone: Send, contador: "servicos", exige: "prestadores.servicos.solicitar" },
           { rota: "/prestadores/conferencia", rotulo: "Conferência", icone: ClipboardCheck, contador: "conferencia", exige: "prestadores.conferencia.ver" },
           { rota: "/prestadores/historico", rotulo: "Histórico", icone: History, exige: "prestadores.historico.ver" },
         ],

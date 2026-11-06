@@ -62,6 +62,8 @@ export const ACOES = {
   "prestadores.cadastro.ver": { area: "prestadores", nome: "Ver o cadastro de prestadores", nivel: "ver" },
   "prestadores.cadastro.editar": { area: "prestadores", nome: "Cadastrar, editar e convidar prestadores", nivel: "editar" },
   "prestadores.cadastro.excluir": { area: "prestadores", nome: "Excluir prestadores", nivel: "excluir" },
+  "prestadores.servicos.solicitar": { area: "prestadores", nome: "Solicitar serviços (motoboy, cartório...) e acompanhar os próprios", nivel: "todos" },
+  "prestadores.servicos.gerenciar": { area: "prestadores", nome: "Acompanhar, cancelar e reencaminhar todos os serviços", nivel: "editar" },
 
   "pagamentos.pedir": { area: "pagamentos", nome: "Pedir pagamentos", nivel: "todos" },
   "pagamentos.ver_todos": { area: "pagamentos", nome: "Ver todos os pedidos (não só os próprios)", nivel: "financeiro" },

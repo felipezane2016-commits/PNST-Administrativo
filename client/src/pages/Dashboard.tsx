@@ -3,7 +3,10 @@ import ReceiptModal from "@/components/ReceiptModal";
 import StatusPill from "@/components/StatusPill";
 import { usePortal } from "@/contexts/PortalContext";
 import { formatBRL, portalKpis, statusDistribution, type Receipt } from "@/lib/portal";
-import { AlertTriangle, ArrowRight, Plus, Receipt as ReceiptIcon } from "lucide-react";
+import { AlertTriangle, ArrowRight, BellRing, Plus, Receipt as ReceiptIcon } from "lucide-react";
+import { useColecao } from "@/_core/armazenamento/colecao";
+import { servicos } from "@/modulos/servicos/colecao";
+import { emAndamento } from "@/modulos/servicos/regras";
 import { useState } from "react";
 import { useLocation } from "wouter";
 import CabecalhoPagina from "@/components/CabecalhoPagina";
@@ -19,6 +22,9 @@ export default function Dashboard() {
   const distribuicao = statusDistribution(receipts);
   const recentes = [...receipts].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 5);
   const firstName = provider.name.split(" ")[0];
+  const meusServicos = useColecao(servicos).filter((s) => s.prestadorId === prestadorId);
+  const novosServicos = meusServicos.filter((s) => s.situacao === "Solicitado");
+  const emCurso = meusServicos.filter(emAndamento).length;
 
   const kpis: { label: string; value: string; detail: string; alerta?: boolean }[] = [
     { label: "Recibos do mês", value: String(k.recibosDoMes), detail: "serviços" },
@@ -44,6 +50,24 @@ export default function Dashboard() {
           </button>
         }
       />
+
+      {novosServicos.length || emCurso ? (
+        <div className="servico-alerta" role="status">
+          <BellRing size={18} strokeWidth={2} aria-hidden="true" />
+          <span>
+            {novosServicos.length ? (
+              <strong>
+                {novosServicos.length} serviço(s) novo(s) aguardando sua resposta
+                {novosServicos.some((s) => s.urgente) ? " — há pedido urgente" : ""}.
+              </strong>
+            ) : null}{" "}
+            {emCurso ? <span>{emCurso} em andamento.</span> : null}
+          </span>
+          <button type="button" className="button-primary" onClick={() => navigate("/servicos")}>
+            Ver serviços <ArrowRight size={13} strokeWidth={2.2} />
+          </button>
+        </div>
+      ) : null}
 
       {k.ajustes > 0 ? (
         <div className="risk-card" role="status">

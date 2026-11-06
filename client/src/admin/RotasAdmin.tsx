@@ -27,6 +27,7 @@ const PAGINAS: Pagina[] = [
   { padrao: "/prestadores", titulo: "Painel", Componente: lazy(() => import("./paginas/prestadores/PainelPrestadores")) },
   { padrao: "/prestadores/conferencia", titulo: "Conferência", Componente: lazy(() => import("./paginas/prestadores/Conferencia")) },
   { padrao: "/prestadores/historico", titulo: "Histórico de recibos", Componente: lazy(() => import("./paginas/prestadores/Historico")) },
+  { padrao: "/prestadores/servicos", titulo: "Serviços", Componente: lazy(() => import("./paginas/prestadores/Servicos")) },
   { padrao: "/prestadores/cadastro", titulo: "Cadastro e acesso", Componente: lazy(() => import("./paginas/prestadores/Cadastro")) },
   { padrao: "/prestadores/arquivos", titulo: "Arquivos", Componente: lazy(() => import("./paginas/prestadores/Arquivos")) },
 

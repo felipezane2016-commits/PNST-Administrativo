@@ -6,6 +6,8 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { notificacoes } from "@/modulos/notificacoes/colecao";
 import { fechamentos, prestadores, recibos } from "@/modulos/prestadores/colecoes";
 import { conferenciaAberta, montarLotes } from "@/modulos/prestadores/regras";
+import { servicos } from "@/modulos/servicos/colecao";
+import { servicosVisiveis } from "@/modulos/servicos/regras";
 import { ArrowLeft, Building2, FileText, Landmark, LayoutGrid, LogOut, Menu, Moon, Receipt, Sun, UserCog, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
@@ -62,12 +64,15 @@ function useContadores(usuario: Usuario): Record<Contador, number> {
   const listaPagamentos = useColecao(pagamentos);
   const config = useColecao(configAprovacao);
   const pessoas = useColecao(usuarios);
+  const listaServicos = useColecao(servicos);
   return useMemo(() => {
     // Ordens que pedem ação hoje: fechar D+n, taxa-alvo atingida, OK do banco atrasado.
     const ordensHoje = alertasDasOrdens(listaOrdens, listaTaxas, HOJE).length;
     const doPagamento = contadoresPagamentos(usuario, listaPagamentos, config, pessoas);
     return {
       notificacoes: avisos.filter(aviso => !aviso.lida).length,
+      // Recusados esperam quem pediu escolher outro prestador.
+      servicos: servicosVisiveis(usuario, listaServicos).filter((s) => s.situacao === "Recusado").length,
       conferencia: montarLotes(listaRecibos, listaFechamentos, listaPrestadores).filter(conferenciaAberta).length,
       ordens: ordensHoje,
       ...doPagamento,
@@ -75,7 +80,7 @@ function useContadores(usuario: Usuario): Record<Contador, number> {
       contas: ordensHoje + doPagamento.pagamentos,
     };
   },
-    [avisos, listaRecibos, listaFechamentos, listaPrestadores, listaOrdens, listaTaxas, usuario, listaPagamentos, config, pessoas]
+    [avisos, listaRecibos, listaFechamentos, listaPrestadores, listaOrdens, listaTaxas, usuario, listaPagamentos, config, pessoas, listaServicos]
   );
 }
 

@@ -9,6 +9,7 @@ import { exigenciaDaRota, moduloDaRota } from "./menu";
  */
 export function notificacaoVisivel(usuario: Usuario | null, aviso: Notificacao) {
   if (!usuario?.ativo) return false;
+  if (aviso.paraId && aviso.paraId !== usuario.id) return false;
   if (aviso.exige && !pode(usuario, aviso.exige)) return false;
   if (!aviso.destino) return true;
   const modulo = moduloDaRota(aviso.destino);

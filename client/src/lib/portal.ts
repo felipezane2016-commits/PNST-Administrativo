@@ -79,6 +79,8 @@ export type Receipt = {
   attachmentId?: string | null;
   /** Observação do escritório ao pedir ajuste ou rejeitar. */
   reviewNote: string | null;
+  /** Pedido de serviço (SV-xxxx) que originou o recibo, quando houver. */
+  servicoId?: string | null;
   createdAt: string;
   updatedAt?: string;
 };

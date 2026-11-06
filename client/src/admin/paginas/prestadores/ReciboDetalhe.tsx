@@ -1,3 +1,5 @@
+import { useColecao } from "@/_core/armazenamento/colecao";
+import { servicos } from "@/modulos/servicos/colecao";
 import { abrirAnexo } from "@/_core/armazenamento/anexos";
 import { formatarData, formatarDataHora } from "@/_core/tempo";
 import Painel from "@/admin/componentes/Painel";
@@ -37,6 +39,7 @@ export function DetalhesRecibo({ recibo }: { recibo: Receipt }) {
         <dt>Solicitante</dt>
         <dd>{recibo.requester || "—"}</dd>
       </div>
+      {recibo.servicoId ? <OrigemDoServico servicoId={recibo.servicoId} /> : null}
       <div className="data-list-cheio">
         <dt>Descrição</dt>
         <dd>{recibo.description || "—"}</dd>
@@ -248,5 +251,25 @@ export function ConfirmarExclusaoRecibo({ recibo, nomePrestador, aoFechar, aoCon
       </p>
       <p className="texto-perigo">O recibo sai da conferência e do portal do prestador, com os documentos anexados. Não dá para desfazer.</p>
     </Painel>
+  );
+}
+
+/** Recibo que nasceu de um pedido de serviço: mostra o pedido de origem. */
+function OrigemDoServico({ servicoId }: { servicoId: string }) {
+  const servico = useColecao(servicos).find((item) => item.id === servicoId);
+  return (
+    <div className="data-list-cheio">
+      <dt>Solicitação de origem</dt>
+      <dd>
+        {servico ? (
+          <>
+            <strong className="texto-mono">{servico.numero}</strong> · pedido por {servico.solicitante} em {formatarData(servico.criadoEm.slice(0, 10))}
+            {servico.execucao ? ` · valor informado ${formatBRL(servico.execucao.valor)}` : ""}
+          </>
+        ) : (
+          "Pedido de serviço (não disponível para você)"
+        )}
+      </dd>
+    </div>
   );
 }

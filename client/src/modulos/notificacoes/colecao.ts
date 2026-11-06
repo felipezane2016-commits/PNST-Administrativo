@@ -15,6 +15,8 @@ export type Notificacao = {
   destino: string | null;
   /** Permissão de quem resolve (ex.: só quem confere pagamentos vê "para conferir"). */
   exige?: Permissao;
+  /** Aviso pessoal: só esta pessoa vê (ex.: quem pediu o serviço). */
+  paraId?: string;
 };
 
 const NOTIFICACOES_DEMO: Notificacao[] = [

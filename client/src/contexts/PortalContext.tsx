@@ -42,7 +42,8 @@ type PortalContextValue = {
   /** Demonstração: código + senha do cadastro. Modo real: e-mail + senha do Supabase. */
   signIn: (code: string, password: string) => Promise<{ ok: true } | { ok: false; message: string }>;
   signOut: () => void;
-  createReceipt: (draft: ReceiptDraft) => Receipt;
+  /** Sem extras: rascunho. Do serviço concluído: pendente de envio, ligado ao pedido. */
+  createReceipt: (draft: ReceiptDraft, extras?: { servicoId: string }) => Receipt;
   updateReceipt: (id: string, draft: ReceiptDraft) => void;
   /** Rascunho → pendente de envio; ajuste solicitado → de volta à conferência. */
   setReceiptStatus: (id: string, status: PrototypeReceiptStatus) => void;
@@ -119,7 +120,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const meus = useCallback((recibo: Receipt) => recibo.prestadorId === meuId, [meuId]);
 
   const createReceipt = useCallback(
-    (draft: ReceiptDraft) => {
+    (draft: ReceiptDraft, extras?: { servicoId: string }) => {
       // O número é global: dois prestadores nunca recebem o mesmo REC-xxxx.
       const created: Receipt = {
         // No banco real cada prestador só enxerga os próprios recibos: o código
@@ -127,12 +128,13 @@ export function PortalProvider({ children }: { children: ReactNode }) {
         id: MODO_REAL ? proximoReciboDoPrestador(recibos.ler(), prestador?.codigoAcesso ?? meuId) : nextReceiptId(recibos.ler()),
         prestadorId: meuId,
         ...camposDoRascunho(draft),
-        status: "Rascunho",
+        status: extras ? "Pendente de envio" : "Rascunho",
         reviewNote: null,
+        ...(extras ? { servicoId: extras.servicoId } : {}),
         createdAt: new Date().toISOString(),
       };
       recibos.atualizar((lista) => [created, ...lista]);
-      registrar(meuId, "criacao", "Recibo criado", provider.name, `Cliente: ${created.client}`, created.id);
+      registrar(meuId, "criacao", extras ? "Recibo criado a partir do serviço concluído" : "Recibo criado", provider.name, `Cliente: ${created.client}`, created.id);
       if (draft.anexos.length) registrar(meuId, "upload", `${draft.anexos.length} arquivo(s) anexado(s)`, provider.name, draft.anexos.map((a) => a.nome).join(", "), created.id);
       return created;
     },

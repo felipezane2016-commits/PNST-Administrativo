@@ -1,8 +1,13 @@
 import { useTheme } from "@/contexts/ThemeContext";
 import { usePortal } from "@/contexts/PortalContext";
 import { formatBRL, formatDate } from "@/lib/portal";
+import { useColecao } from "@/_core/armazenamento/colecao";
+import { servicos } from "@/modulos/servicos/colecao";
+import type { Servico } from "@/modulos/servicos/tipos";
+import { toast } from "sonner";
 import {
   CalendarCheck,
+  Send,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -11,7 +16,7 @@ import {
   Sun,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import Marca from "@/components/Marca";
 import AvisoRenovacao from "@/components/AvisoRenovacao";
@@ -21,6 +26,7 @@ import MenuSino from "@/components/MenuSino";
 
 const NAV_ITEMS = [
   { path: "/", label: "Dashboard", icon: LayoutDashboard },
+  { path: "/servicos", label: "Serviços", icon: Send },
   { path: "/recibos", label: "Meus recibos", icon: Receipt },
   { path: "/fechamento", label: "Fechamento mensal", icon: CalendarCheck },
 ] as const;
@@ -41,7 +47,11 @@ export default function PortalShell({
   title: string;
   children: ReactNode;
 }) {
-  const { provider, receipts, signOut } = usePortal();
+  const { provider, prestadorId, receipts, signOut } = usePortal();
+  const todosServicos = useColecao(servicos);
+  // Pedidos do escritório esperando resposta deste prestador.
+  const novosServicos = todosServicos.filter(servico => servico.prestadorId === prestadorId && servico.situacao === "Solicitado");
+  useAlertaDeNovosServicos(novosServicos, () => navigate("/servicos"));
   const { theme, toggleTheme } = useTheme();
   const [location, navigate] = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -108,7 +118,11 @@ export default function PortalShell({
               const Icon = item.icon;
               const active = location === item.path;
               const badge =
-                item.path === "/recibos" && draftCount > 0 ? draftCount : null;
+                item.path === "/recibos" && draftCount > 0
+                  ? draftCount
+                  : item.path === "/servicos" && novosServicos.length > 0
+                    ? novosServicos.length
+                    : null;
               return (
                 <button
                   key={item.path}
@@ -120,7 +134,7 @@ export default function PortalShell({
                   <Icon size={17} strokeWidth={active ? 2.2 : 1.7} />
                   <span>{item.label}</span>
                   {badge ? (
-                    <span className="nav-count" aria-label={`${badge} rascunho(s)`}>
+                    <span className="nav-count" aria-label={item.path === "/servicos" ? `${badge} serviço(s) novo(s)` : `${badge} rascunho(s)`}>
                       {badge}
                     </span>
                   ) : null}
@@ -193,13 +207,21 @@ export default function PortalShell({
               </button>
             ) : null}
             <MenuSino
-              avisos={rejected.map(receipt => ({
+              avisos={[
+                ...novosServicos.map(servico => ({
+                  id: servico.id,
+                  titulo: `Novo serviço: ${servico.categoria}${servico.urgente ? " (urgente)" : ""}`,
+                  detalhe: `${servico.numero} · ${servico.cliente} · ${formatDate(servico.data)}${servico.horario ? ` às ${servico.horario}` : ""}`,
+                  abrir: () => navigate("/servicos"),
+                })),
+                ...rejected.map(receipt => ({
                 id: receipt.id,
                 titulo: receipt.status === "Rejeitado" ? `${receipt.id} rejeitado` : `${receipt.id}: ajuste solicitado`,
                 detalhe: receipt.reviewNote ?? "Revise e reenvie o recibo.",
                 abrir: () => navigate("/recibos"),
-              }))}
-              vazio="Você está em dia. Nenhum ajuste solicitado."
+              })),
+              ]}
+              vazio="Você está em dia. Nenhum serviço novo nem ajuste solicitado."
             />
             <MenuConta
               iniciais={initials(provider.name)}
@@ -223,4 +245,30 @@ export default function PortalShell({
       </div>
     </div>
   );
+}
+
+/**
+ * Alerta na hora em que um pedido novo chega (tempo real): um aviso na tela
+ * com atalho para a página de serviços. Vale o pedido feito (ou reencaminhado)
+ * depois que o portal abriu — os anteriores ficam no contador e no sino. A
+ * folga de 2 minutos cobre relógio adiantado de quem pediu e a carga inicial.
+ */
+function useAlertaDeNovosServicos(novos: Servico[], abrir: () => void) {
+  const abertoEm = useRef(Date.now() - 2 * 60 * 1000);
+  const avisados = useRef(new Set<string>());
+  const abrirRef = useRef(abrir);
+  abrirRef.current = abrir;
+  useEffect(() => {
+    for (const servico of novos) {
+      const pedidoEm = Date.parse(servico.historico[servico.historico.length - 1]?.quando ?? servico.criadoEm);
+      const chave = `${servico.id}|${pedidoEm}`;
+      if (pedidoEm < abertoEm.current || avisados.current.has(chave)) continue;
+      avisados.current.add(chave);
+      toast(servico.urgente ? `Novo serviço URGENTE: ${servico.categoria}` : `Novo serviço: ${servico.categoria}`, {
+        description: `${servico.numero} · ${servico.cliente}`,
+        duration: 12000,
+        action: { label: "Ver", onClick: () => abrirRef.current() },
+      });
+    }
+  }, [novos]);
 }
