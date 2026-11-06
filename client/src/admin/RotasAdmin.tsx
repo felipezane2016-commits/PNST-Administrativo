@@ -1,9 +1,9 @@
 import { pode, veModulo } from "@/_core/identidade/permissoes";
 import { useUsuarioAtual } from "@/_core/identidade/sessao";
 import { Loader2, ShieldOff } from "lucide-react";
-import { lazy, Suspense, type ComponentType, type LazyExoticComponent } from "react";
+import { lazy, Suspense, useEffect, type ComponentType, type LazyExoticComponent } from "react";
 import { Redirect, Route, Switch, useLocation } from "wouter";
-import CascaAdmin, { rotaInicial } from "./CascaAdmin";
+import CascaAdmin, { rotaDeChegada, rotaInicial } from "./CascaAdmin";
 import Vazio from "./componentes/Vazio";
 import { exigenciaDaRota, moduloDaRota, primeiraPaginaPermitida, rotaNovaDePagamentos } from "./menu";
 import VisaoGeral from "./paginas/VisaoGeral";
@@ -56,9 +56,22 @@ function Carregando() {
   );
 }
 
+/**
+ * Chegada ao sistema: vale na primeira tela depois de abrir a página ou de
+ * fazer login (Entrar chama `marcarChegada`). Passada a primeira tela, "/"
+ * volta a ser a página inicial do escritório ("Voltar ao escritório").
+ */
+let chegando = true;
+export const marcarChegada = () => {
+  chegando = true;
+};
+
 export default function RotasAdmin() {
   const usuario = useUsuarioAtual();
   const [caminho] = useLocation();
+  useEffect(() => {
+    if (usuario) chegando = false;
+  }, [caminho, usuario]);
 
   if (!usuario) return <Redirect to="/login" />;
 
@@ -71,6 +84,10 @@ export default function RotasAdmin() {
     PAGINAS.find((item) => item.padrao.includes(":") && caminho.startsWith(item.padrao.split(":")[0]));
   const modulo = moduloDaRota(caminho);
 
+  // Ao entrar (login ou sistema aberto já logado), o colaborador vai direto
+  // para a área de trabalho dele: Prestadores. Depois disso, "/" é o escritório.
+  const entrada = caminho === "/" && chegando ? rotaDeChegada(usuario) : null;
+  if (entrada && entrada !== "/") return <Redirect to={entrada} replace />;
   // A visão geral é o destino padrão; quem não a vê cai na primeira área que vê.
   if (caminho === "/" && !veModulo(usuario, "visao")) return <Redirect to={rotaInicial(usuario)} />;
 

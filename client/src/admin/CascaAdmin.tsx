@@ -11,7 +11,7 @@ import { servicosVisiveis } from "@/modulos/servicos/regras";
 import { ArrowLeft, Building2, FileText, Landmark, LayoutGrid, LogOut, Menu, Moon, Receipt, Sun, UserCog, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
-import { itemAtivo, MENU_ESCRITORIO, MENUS_MODULO, menuDaRota, type Contador, type Grupo, type ItemMenu } from "./menu";
+import { itemAtivo, MENU_ESCRITORIO, MENUS_MODULO, menuDaRota, primeiraPaginaPermitida, type Contador, type Grupo, type ItemMenu } from "./menu";
 import Marca from "@/components/Marca";
 import AvisoRenovacao from "@/components/AvisoRenovacao";
 import BuscaGlobal, { type ItemBusca } from "@/components/BuscaGlobal";
@@ -24,6 +24,19 @@ import { configAprovacao, pagamentos } from "@/modulos/pagamentos/colecoes";
 import { ehFinanceiro, podeAprovar } from "@/modulos/pagamentos/regras";
 import type { ConfigAprovacao, Pagamento } from "@/modulos/pagamentos/tipos";
 import { formatarData, HOJE } from "@/_core/tempo";
+
+/**
+ * Onde a pessoa cai ao entrar no sistema. Colaborador (não administrador) com
+ * a área de Prestadores vai direto para a primeira página dela que pode abrir;
+ * o administrador entra pela página inicial do escritório.
+ */
+export function rotaDeChegada(usuario: Usuario) {
+  if (usuario.papel !== "admin" && veModulo(usuario, "prestadores")) {
+    const destino = primeiraPaginaPermitida("/prestadores", (permissao) => pode(usuario, permissao));
+    if (destino) return destino;
+  }
+  return "/";
+}
 
 /** Primeira rota que a pessoa pode abrir no escritório. */
 export function rotaInicial(usuario: Usuario) {
@@ -163,10 +176,13 @@ export default function CascaAdmin({ usuario, titulo, children }: Props) {
         <div className="sidebar-scroll">
           {menuModulo ? (
             <>
-              <button type="button" className="nav-item sidebar-back" onClick={() => navegar(rotaInicial(usuario))}>
-                <ArrowLeft size={16} strokeWidth={1.7} />
-                <span>Voltar ao escritório</span>
-              </button>
+              {/* Quem só tem esta área não tem escritório para onde voltar. */}
+              {rotaInicial(usuario).startsWith(menuModulo.prefixo) ? null : (
+                <button type="button" className="nav-item sidebar-back" onClick={() => navegar(rotaInicial(usuario))}>
+                  <ArrowLeft size={16} strokeWidth={1.7} />
+                  <span>Voltar ao escritório</span>
+                </button>
+              )}
               <p className="sidebar-module-title">{menuModulo.titulo}</p>
             </>
           ) : null}

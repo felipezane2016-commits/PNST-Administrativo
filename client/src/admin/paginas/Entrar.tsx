@@ -6,6 +6,7 @@ import { Link, Redirect, useLocation } from "wouter";
 import logoPnst from "@/assets/pnst-logo.webp";
 import { MODO_REAL } from "@/_core/supabase/modo";
 import EsqueciSenha from "@/components/EsqueciSenha";
+import { marcarChegada } from "@/admin/RotasAdmin";
 
 export default function Entrar() {
   const usuario = useUsuarioAtual();
@@ -28,6 +29,7 @@ export default function Entrar() {
       return;
     }
     setErro(null);
+    marcarChegada();
     navegar("/");
   }
 
